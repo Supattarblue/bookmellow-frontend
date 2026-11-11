@@ -1,5 +1,36 @@
 
+import { useEffect, useState } from 'react';
+import { apiRequest } from '../api/backend';
+
 function BookCard({ book, onSelect }) {
+  const [voteSummary, setVoteSummary] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadVote() {
+      try {
+        const data = await apiRequest(`/api/books/${book.id}/vote`);
+
+        if (active) {
+          setVoteSummary(data.summary);
+        }
+      } catch (error) {
+        if (active) {
+          setVoteSummary(null);
+        }
+      }
+    }
+
+    if (book?.id) {
+      loadVote();
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [book.id]);
+
   return (
     <article
       onClick={() => onSelect(book)}
@@ -14,7 +45,6 @@ function BookCard({ book, onSelect }) {
       aria-label={`ดูรายละเอียด ${book.title}`}
       className="cursor-pointer overflow-hidden rounded-2xl bg-autumn-cream shadow-sm transition hover:-translate-y-1 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-autumn-copper"
     >
-
       {/* รูปปกหนังสือ */}
       <div className="flex h-64 items-center justify-center bg-autumn-beige p-6">
         {book.cover_url ? (
@@ -43,6 +73,16 @@ function BookCard({ book, onSelect }) {
           ผู้เขียน: {book.author}
         </p>
 
+        {/* คะแนนจากผู้อ่าน */}
+        {voteSummary && voteSummary.total_votes > 0 && (
+          <p className="mb-3 text-sm font-medium text-amber-700">
+            ★ {Number(voteSummary.average_rating).toFixed(1)} / 5
+            <span className="ml-2 text-xs font-normal text-autumn-brown">
+              ({voteSummary.total_votes} คะแนน)
+            </span>
+          </p>
+        )}
+
         <p className="mb-4 line-clamp-2 text-sm leading-6 text-autumn-dark">
           {book.description || 'ยังไม่มีคำอธิบายหนังสือ'}
         </p>
@@ -66,7 +106,6 @@ function BookCard({ book, onSelect }) {
           คลิกเพื่อดูรายละเอียด →
         </p>
       </div>
-
     </article>
   );
 }

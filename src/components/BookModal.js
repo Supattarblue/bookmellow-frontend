@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import VoteSection from './VoteSection';
 
 function BookModal({ book, onClose }) {
   const { user } = useAuth();
@@ -137,6 +138,9 @@ function BookModal({ book, onClose }) {
         <p className="text-sm text-autumn-brown">
           ปีที่ตีพิมพ์: {book.published_year || '-'}
         </p>
+
+        {/* ระบบให้คะแนนหนังสือ */}
+        <VoteSection bookId={book.id} />
 
         {/* ปุ่มเพิ่มลงชั้นหนังสือ */}
         <button

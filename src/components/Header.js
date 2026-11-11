@@ -46,7 +46,7 @@ function Header() {
 
         <Link
           to="/"
-          className="shrink-0 text-2xl font-semibold tracking-wide text-autumn-chestnut"
+          className="shrink-0 text-2xl font-bold tracking-wide text-[#3B2418] transition hover:text-[#70452F]"
         >
           BookMellow
         </Link>
