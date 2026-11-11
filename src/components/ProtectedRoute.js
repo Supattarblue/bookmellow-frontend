@@ -1,0 +1,39 @@
+
+import { Navigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+
+function ProtectedRoute({ children, allowedRoles }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  // รอตรวจสอบ Token ก่อน
+  if (loading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <p className="text-autumn-brown">
+          กำลังตรวจสอบข้อมูลสมาชิก...
+        </p>
+      </div>
+    );
+  }
+
+  // ถ้ายังไม่ได้เข้าสู่ระบบ ให้กลับไปหน้า Login
+  if (!user) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: location }}
+      />
+    );
+  }
+
+  // ตรวจสอบสิทธิ์ตาม Role
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+}
+
+export default ProtectedRoute;
