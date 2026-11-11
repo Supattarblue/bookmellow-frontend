@@ -13,6 +13,7 @@ import Profile from './pages/Profile';
 import MyBookshelf from './pages/MyBookshelf';
 import Interests from './pages/Interests';
 import Recommendations from './pages/Recommendations';
+import AdminDashboard from './pages/AdminDashboard';
 
 import { AuthProvider } from './context/AuthContext';
 
@@ -26,11 +27,8 @@ function App() {
           <main className="flex-1">
             <Routes>
               <Route path="/" element={<Home />} />
-
               <Route path="/books" element={<Books />} />
-
               <Route path="/login" element={<Login />} />
-
               <Route path="/register" element={<Register />} />
 
               <Route
@@ -65,6 +63,15 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <Recommendations />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/admin"
+                element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminDashboard />
                   </ProtectedRoute>
                 }
               />

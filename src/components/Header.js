@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getBooks } from '../api/backend';
 
@@ -38,6 +38,13 @@ function Header() {
     navigate('/');
   }
 
+  const navClass = ({ isActive }) =>
+    `relative pb-2 transition hover:text-autumn-copper ${
+      isActive
+        ? 'text-autumn-chestnut after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-full after:rounded-full after:bg-autumn-copper'
+        : ''
+    }`;
+
   return (
     <header className="sticky top-0 z-40 border-b border-autumn-beige bg-autumn-cream/95 backdrop-blur">
 
@@ -52,33 +59,27 @@ function Header() {
         </Link>
 
         <div className="hidden items-center gap-7 md:flex">
-          <Link
-            to="/"
-            className="transition hover:text-autumn-copper"
-          >
+          <NavLink to="/" end className={navClass}>
             หน้าแรก
-          </Link>
+          </NavLink>
 
-          <Link
-            to="/books"
-            className="transition hover:text-autumn-copper"
-          >
+          <NavLink to="/books" className={navClass}>
             หนังสือทั้งหมด
-          </Link>
+          </NavLink>
 
-          <Link
-            to="/recommendations"
-            className="transition hover:text-autumn-copper"
-          >
+          <NavLink to="/recommendations" className={navClass}>
             หนังสือแนะนำ
-          </Link>
+          </NavLink>
 
-          <Link
-            to="/my-bookshelf"
-            className="transition hover:text-autumn-copper"
-          >
+          <NavLink to="/my-bookshelf" className={navClass}>
             ชั้นหนังสือของฉัน
-          </Link>
+          </NavLink>
+
+          {user?.role === 'admin' && (
+            <NavLink to="/admin" className={navClass}>
+              แดชบอร์ด
+            </NavLink>
+          )}
         </div>
 
         {/* บัญชีสมาชิก */}
@@ -225,12 +226,18 @@ function Header() {
           </div>
 
           {/* เลือกตามความสนใจ */}
-          <Link
+          <NavLink
             to="/interests"
-            className="rounded-full border border-autumn-copper px-5 py-2 text-sm font-medium text-autumn-chestnut transition hover:bg-autumn-beige"
+            className={({ isActive }) =>
+              `rounded-full border px-5 py-2 text-sm font-medium transition ${
+                isActive
+                  ? 'border-autumn-copper bg-autumn-beige text-autumn-chestnut'
+                  : 'border-autumn-copper text-autumn-chestnut hover:bg-autumn-beige'
+              }`
+            }
           >
             เลือกตามความสนใจ
-          </Link>
+          </NavLink>
 
         </div>
       </div>
