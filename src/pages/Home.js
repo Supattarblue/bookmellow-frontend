@@ -1,56 +1,175 @@
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
-import { getBooks } from '../api/backend';
-import { useAuth } from '../context/AuthContext';
+import {
+  getBooks,
+  getDiscoverBooks,
+} from '../api/backend';
 
+import { useAuth } from '../context/AuthContext';
 import BookCard from '../components/BookCard';
 import BookModal from '../components/BookModal';
 import SearchBar from '../components/SearchBar';
+
+function normalizeBookKey(book) {
+  return `${(book.title || '').trim().toLowerCase()}|${(book.author || '').trim().toLowerCase()}`;
+}
+
+function getBookRenderKey(book) {
+  return `${book.source || 'database'}-${book.id}`;
+}
+
+function hasCover(book) {
+  return typeof book?.cover_url === 'string' &&
+    book.cover_url.trim().length > 0;
+}
 
 function Home() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
 
-  // หนังสือทั้งหมด ใช้สำหรับระบบแนะนำ
   const [books, setBooks] = useState([]);
-
-  // หนังสือที่ผ่านการค้นหาและกรองแล้ว
-  const [filteredBooks, setFilteredBooks] = useState([]);
-
   const [interests, setInterests] = useState([]);
+  const [failedCoverKeys, setFailedCoverKeys] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
   const [selectedBook, setSelectedBook] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
 
   const selectedCategory = searchParams.get('category') || 'ทั้งหมด';
 
-  // โหลดหนังสือทั้งหมดครั้งแรก
+  // แจ้งเมื่อรูปหนังสือโหลดไม่สำเร็จ
+  const handleImageError = (book) => {
+    const key = getBookRenderKey(book);
+
+    setFailedCoverKeys((previous) => {
+      const next = new Set(previous);
+      next.add(key);
+      return next;
+    });
+
+    setSelectedBook((current) => {
+      if (current && getBookRenderKey(current) === key) {
+        return null;
+      }
+      return current;
+    });
+  };
+
+  // โหลดหนังสือจาก Supabase และ Google Books
   useEffect(() => {
     let cancelled = false;
 
     async function fetchBooks() {
-      try {
-        setLoading(true);
-        setError('');
+      setLoading(true);
+      setError('');
+      setFailedCoverKeys(new Set());
 
-        const data = await getBooks();
+      const [databaseResult, externalResult] = await Promise.allSettled([
+        getBooks(),
+        getDiscoverBooks(),
+      ]);
 
-        if (!cancelled) {
-          setBooks(data);
-          setFilteredBooks(data);
+      if (cancelled) return;
+
+      const databaseBooks =
+        databaseResult.status === 'fulfilled' &&
+        Array.isArray(databaseResult.value)
+          ? databaseResult.value
+          : [];
+
+      // รองรับทั้ง API ที่ส่ง Array โดยตรง
+      // และ API ที่ส่งข้อมูลในรูปแบบ { data: [...] }
+      const externalResponse =
+        externalResult.status === 'fulfilled'
+          ? externalResult.value
+          : [];
+
+      const externalBooks = Array.isArray(externalResponse)
+        ? externalResponse
+        : Array.isArray(externalResponse?.data)
+          ? externalResponse.data
+          : [];
+
+      if (
+        databaseResult.status === 'rejected' &&
+        externalResult.status === 'rejected'
+      ) {
+        setError('ไม่สามารถโหลดหนังสือจากระบบได้ กรุณาลองอีกครั้ง');
+        setBooks([]);
+        setLoading(false);
+        return;
+      }
+
+      // เก็บหนังสือเดิมจากฐานข้อมูลที่มีรูปปก
+      const validDatabaseBooks = databaseBooks.filter(hasCover);
+
+      const mergedBooks = [...validDatabaseBooks];
+
+      // ป้องกันหนังสือซ้ำจากฐานข้อมูล
+      const seen = new Set(
+        validDatabaseBooks.map(normalizeBookKey)
+      );
+
+      // เพิ่มหนังสือจาก Google Books ได้สูงสุด 100 เล่ม
+      // โดยไม่จำกัดจำนวนรวมของหนังสือเดิมในฐานข้อมูล
+      let externalCount = 0;
+
+      for (const book of externalBooks) {
+        if (
+          !book.id ||
+          !book.title ||
+          !book.author ||
+          !hasCover(book)
+        ) {
+          continue;
         }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err.message || 'ไม่สามารถโหลดข้อมูลหนังสือได้');
+
+        const key = normalizeBookKey(book);
+
+        if (seen.has(key)) continue;
+
+        seen.add(key);
+
+        mergedBooks.push({
+          ...book,
+          source: 'google_books',
+          categories: Array.isArray(book.categories)
+            ? book.categories
+            : [],
+        });
+
+        externalCount++;
+
+        if (externalCount >= 100) break;
+      }
+
+      if (!cancelled) {
+        // ไม่ตัดหนังสือเดิมและหนังสือภายนอกให้เหลือ 100 เล่มรวม
+        setBooks(mergedBooks);
+
+        if (
+          databaseResult.status === 'rejected' ||
+          externalResult.status === 'rejected'
+        ) {
+          console.warn(
+            'โหลดหนังสือได้เพียงบางแหล่ง',
+            databaseResult.status === 'rejected'
+              ? databaseResult.reason
+              : '',
+            externalResult.status === 'rejected'
+              ? externalResult.reason
+              : ''
+          );
         }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+
+        console.log('BookMellow database books:', validDatabaseBooks.length);
+        console.log('Google Books discovered:', externalBooks.length);
+        console.log('Google Books added:', externalCount);
+        console.log('Total books displayed:', mergedBooks.length);
+
+        setLoading(false);
       }
     }
 
@@ -83,57 +202,55 @@ function Home() {
     }
   }, [user]);
 
-  // ค้นหาหนังสือผ่าน Backend เมื่อคำค้นหาหรือหมวดหมู่เปลี่ยน
-  useEffect(() => {
-    let cancelled = false;
-
-    const timer = setTimeout(async () => {
-      try {
-        setLoading(true);
-        setError('');
-
-        const data = await getBooks({
-          search: searchTerm,
-          category: selectedCategory,
-        });
-
-        if (!cancelled) {
-          setFilteredBooks(data);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err.message || 'ไม่สามารถค้นหาหนังสือได้');
-          setFilteredBooks([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }, 300);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [searchTerm, selectedCategory]);
-
-  // ค้นหาหนังสือที่ตรงกับความสนใจ
-  const recommendedBooks = books
-    .map((book) => {
-      const matchedCategories = (book.categories || []).filter(
-        (category) => interests.includes(category)
+  // ตัดหนังสือที่รูปโหลดไม่สำเร็จออก
+  const visibleBooks = useMemo(() => {
+    return books.filter((book) => {
+      return (
+        hasCover(book) &&
+        !failedCoverKeys.has(getBookRenderKey(book))
       );
+    });
+  }, [books, failedCoverKeys]);
 
-      return {
-        ...book,
-        matchedCategories,
-      };
-    })
-    .filter((book) => book.matchedCategories.length > 0)
-    .slice(0, 4);
+  // ค้นหาและกรองจากหนังสือที่มีรูปใช้งานได้
+  const filteredBooks = useMemo(() => {
+    const keyword = searchTerm.trim().toLowerCase();
 
-  // ล้างตัวกรองทั้งหมด
+    return visibleBooks.filter((book) => {
+      const matchesSearch =
+        !keyword ||
+        book.title?.toLowerCase().includes(keyword) ||
+        book.author?.toLowerCase().includes(keyword) ||
+        book.description?.toLowerCase().includes(keyword);
+
+      const matchesCategory =
+        selectedCategory === 'ทั้งหมด' ||
+        (book.categories || []).some(
+          (category) =>
+            category.toLowerCase() === selectedCategory.toLowerCase()
+        );
+
+      return matchesSearch && matchesCategory;
+    });
+  }, [visibleBooks, searchTerm, selectedCategory]);
+
+  // หนังสือแนะนำตามความสนใจ เฉพาะเล่มที่มีรูป
+  const recommendedBooks = useMemo(() => {
+    return visibleBooks
+      .map((book) => {
+        const matchedCategories = (book.categories || []).filter(
+          (category) => interests.includes(category)
+        );
+
+        return {
+          ...book,
+          matchedCategories,
+        };
+      })
+      .filter((book) => book.matchedCategories.length > 0)
+      .slice(0, 4);
+  }, [visibleBooks, interests]);
+
   const clearFilters = () => {
     setSearchTerm('');
     setSearchParams({});
@@ -228,22 +345,15 @@ function Home() {
                 เลือกความสนใจของฉัน
               </Link>
             </div>
-          ) : loading && books.length === 0 ? (
-            <div className="py-12 text-center text-autumn-brown">
-              กำลังค้นหาหนังสือที่เหมาะกับคุณ...
-            </div>
-          ) : error && books.length === 0 ? (
-            <div className="rounded-2xl bg-white p-8 text-center text-autumn-brown">
-              ยังไม่สามารถโหลดหนังสือแนะนำได้ในขณะนี้
-            </div>
           ) : recommendedBooks.length > 0 ? (
             <>
               <div className="grid grid-cols-1 gap-7 sm:grid-cols-2 lg:grid-cols-4">
                 {recommendedBooks.map((book) => (
-                  <div key={book.id}>
+                  <div key={getBookRenderKey(book)}>
                     <BookCard
                       book={book}
                       onSelect={setSelectedBook}
+                      onImageError={handleImageError}
                     />
 
                     <div className="mt-3 rounded-xl bg-autumn-beige/50 p-4">
@@ -310,7 +420,6 @@ function Home() {
           </p>
         </div>
 
-        {/* Search */}
         <div
           id="search"
           className="mb-10 rounded-3xl bg-white p-6 shadow-sm md:p-8"
@@ -321,21 +430,17 @@ function Home() {
           />
 
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm text-autumn-brown">
-                {selectedCategory !== 'ทั้งหมด' && (
-                  <span>
-                    หมวดหมู่: {selectedCategory} ·{' '}
-                  </span>
-                )}
+            <p className="text-sm text-autumn-brown">
+              {selectedCategory !== 'ทั้งหมด' && (
+                <span>หมวดหมู่: {selectedCategory} · </span>
+              )}
 
-                พบหนังสือทั้งหมด{' '}
-                <span className="font-semibold text-autumn-chestnut">
-                  {filteredBooks.length}
-                </span>{' '}
-                เล่ม
-              </p>
-            </div>
+              พบหนังสือทั้งหมด{' '}
+              <span className="font-semibold text-autumn-chestnut">
+                {filteredBooks.length}
+              </span>{' '}
+              เล่ม
+            </p>
 
             {(searchTerm || selectedCategory !== 'ทั้งหมด') && (
               <button
@@ -349,89 +454,68 @@ function Home() {
           </div>
         </div>
 
-        {/* Loading */}
         {loading && (
           <div className="py-20 text-center">
             <p className="text-lg text-autumn-brown">
-              กำลังโหลดข้อมูลหนังสือ...
+              กำลังโหลดหนังสือจาก BookMellow และ Google Books...
             </p>
           </div>
         )}
 
-        {/* Error */}
         {!loading && error && (
           <div className="rounded-2xl bg-red-50 px-6 py-10 text-center">
             <p className="mb-3 text-lg font-medium text-red-700">
-              ไม่สามารถโหลดข้อมูลหนังสือได้
+              ไม่สามารถโหลดหนังสือจากระบบได้
             </p>
 
-            <p className="text-sm text-red-600">
-              {error}
-            </p>
+            <p className="text-sm text-red-600">{error}</p>
 
             <button
               type="button"
-              onClick={() => {
-                setSearchTerm('');
-                setSearchParams({});
-              }}
-              className="mt-5 rounded-full bg-autumn-chestnut px-6 py-2 text-white transition hover:bg-autumn-copper"
+              onClick={() => window.location.reload()}
+              className="mt-5 rounded-full bg-autumn-chestnut px-6 py-2 text-white"
             >
               ลองอีกครั้ง
             </button>
           </div>
         )}
 
-        {/* Empty Books */}
-        {!loading && !error && books.length === 0 && (
-          <div className="py-20 text-center">
-            <span className="text-5xl">📚</span>
-
-            <p className="mt-5 text-lg text-autumn-brown">
-              ยังไม่มีข้อมูลหนังสือ
-            </p>
+        {!loading && !error && filteredBooks.length > 0 && (
+          <div className="grid grid-cols-1 gap-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {filteredBooks.map((book) => (
+              <BookCard
+                key={getBookRenderKey(book)}
+                book={book}
+                onSelect={setSelectedBook}
+                onImageError={handleImageError}
+              />
+            ))}
           </div>
         )}
 
-        {/* Book List */}
-        {!loading && !error && books.length > 0 && (
-          <>
-            {filteredBooks.length > 0 ? (
-              <div className="grid grid-cols-1 gap-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {filteredBooks.map((book) => (
-                  <BookCard
-                    key={book.id}
-                    book={book}
-                    onSelect={setSelectedBook}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-2xl bg-autumn-beige/50 py-16 text-center">
-                <span className="text-5xl">🔎</span>
+        {!loading && !error && filteredBooks.length === 0 && (
+          <div className="rounded-2xl bg-autumn-beige/50 py-16 text-center">
+            <span className="text-5xl">🔎</span>
 
-                <h3 className="mt-5 text-xl font-semibold text-autumn-chestnut">
-                  ไม่พบหนังสือที่ค้นหา
-                </h3>
+            <h3 className="mt-5 text-xl font-semibold text-autumn-chestnut">
+              ไม่พบหนังสือที่ค้นหา
+            </h3>
 
-                <p className="mt-2 text-sm text-autumn-brown">
-                  ลองเปลี่ยนคำค้นหาหรือเลือกหมวดหมู่อื่นดูนะคะ
-                </p>
+            <p className="mt-2 text-sm text-autumn-brown">
+              ลองเปลี่ยนคำค้นหาหรือเลือกหมวดหมู่อื่นดูนะคะ
+            </p>
 
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="mt-6 rounded-full bg-autumn-chestnut px-6 py-3 text-white transition hover:bg-autumn-copper"
-                >
-                  ดูหนังสือทั้งหมด
-                </button>
-              </div>
-            )}
-          </>
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="mt-6 rounded-full bg-autumn-chestnut px-6 py-3 text-white"
+            >
+              ดูหนังสือทั้งหมด
+            </button>
+          </div>
         )}
       </section>
 
-      {/* Book Detail Modal */}
       <BookModal
         book={selectedBook}
         onClose={() => setSelectedBook(null)}

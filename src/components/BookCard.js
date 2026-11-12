@@ -2,13 +2,21 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from '../api/backend';
 
-function BookCard({ book, onSelect }) {
+function BookCard({ book, onSelect, onImageError }) {
   const [voteSummary, setVoteSummary] = useState(null);
+  const [imageError, setImageError] = useState(false);
+
+  const isExternalBook = book?.source === 'google_books';
 
   useEffect(() => {
     let active = true;
 
     async function loadVote() {
+      if (!book?.id || isExternalBook) {
+        setVoteSummary(null);
+        return;
+      }
+
       try {
         const data = await apiRequest(`/api/books/${book.id}/vote`);
 
@@ -16,28 +24,37 @@ function BookCard({ book, onSelect }) {
           setVoteSummary(data.summary);
         }
       } catch (error) {
-        if (active) {
-          setVoteSummary(null);
-        }
+        if (active) setVoteSummary(null);
       }
     }
 
-    if (book?.id) {
-      loadVote();
-    }
+    loadVote();
 
     return () => {
       active = false;
     };
-  }, [book.id]);
+  }, [book?.id, isExternalBook]);
+
+  useEffect(() => {
+    setImageError(false);
+  }, [book?.cover_url]);
+
+  if (!book?.cover_url || imageError) {
+    return null;
+  }
+
+  const handleImageError = () => {
+    setImageError(true);
+    onImageError?.(book);
+  };
 
   return (
     <article
-      onClick={() => onSelect(book)}
+      onClick={() => onSelect?.(book)}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          onSelect(book);
+          onSelect?.(book);
         }
       }}
       role="button"
@@ -45,25 +62,18 @@ function BookCard({ book, onSelect }) {
       aria-label={`ดูรายละเอียด ${book.title}`}
       className="cursor-pointer overflow-hidden rounded-2xl bg-autumn-cream shadow-sm transition hover:-translate-y-1 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-autumn-copper"
     >
-      {/* รูปปกหนังสือ */}
-      <div className="flex h-64 items-center justify-center bg-autumn-beige p-6">
-        {book.cover_url ? (
-          <img
-            src={book.cover_url}
-            alt={book.title}
-            className="h-full w-full rounded-lg object-cover"
-          />
-        ) : (
-          <div className="text-center">
-            <span className="text-5xl">📖</span>
-            <p className="mt-3 text-sm text-autumn-brown">
-              BookMellow
-            </p>
-          </div>
-        )}
+      <div className="flex h-64 items-center justify-center bg-autumn-beige p-4">
+        <img
+          src={book.cover_url}
+          alt={`ปกหนังสือ ${book.title}`}
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          onError={handleImageError}
+          className="h-full w-full rounded-lg object-contain"
+        />
       </div>
 
-      {/* ข้อมูลหนังสือ */}
       <div className="p-5">
         <h4 className="mb-2 text-lg font-semibold text-autumn-chestnut">
           {book.title}
@@ -73,8 +83,7 @@ function BookCard({ book, onSelect }) {
           ผู้เขียน: {book.author}
         </p>
 
-        {/* คะแนนจากผู้อ่าน */}
-        {voteSummary && voteSummary.total_votes > 0 && (
+        {!isExternalBook && voteSummary && voteSummary.total_votes > 0 && (
           <p className="mb-3 text-sm font-medium text-amber-700">
             ★ {Number(voteSummary.average_rating).toFixed(1)} / 5
             <span className="ml-2 text-xs font-normal text-autumn-brown">
@@ -101,6 +110,12 @@ function BookCard({ book, onSelect }) {
         <p className="mt-4 text-xs text-autumn-brown">
           ปีที่ตีพิมพ์: {book.published_year || '-'}
         </p>
+
+        {isExternalBook && (
+          <p className="mt-2 text-xs text-autumn-copper">
+            แหล่งข้อมูล: Google Books
+          </p>
+        )}
 
         <p className="mt-4 text-sm font-medium text-autumn-copper">
           คลิกเพื่อดูรายละเอียด →

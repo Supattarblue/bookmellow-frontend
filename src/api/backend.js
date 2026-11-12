@@ -1,7 +1,10 @@
-
 const API_URL = process.env.REACT_APP_API_URL;
 
 export async function apiRequest(path, options = {}) {
+  if (!API_URL) {
+    throw new Error('ไม่พบ REACT_APP_API_URL ใน Environment Variables');
+  }
+
   const token = localStorage.getItem('bookmellow_token');
 
   const headers = {
@@ -35,7 +38,7 @@ export async function apiRequest(path, options = {}) {
   return result;
 }
 
-// ดึงหนังสือจาก Backend พร้อมค้นหาและกรองหมวดหมู่
+// หนังสือจาก Supabase
 export async function getBooks(options = {}) {
   const params = new URLSearchParams();
 
@@ -56,12 +59,45 @@ export async function getBooks(options = {}) {
     `/api/books${query ? `?${query}` : ''}`
   );
 
-  return result.data || [];
+  return Array.isArray(result?.data)
+    ? result.data
+    : [];
+}
+
+// หนังสือเพิ่มเติมจาก Google Books สำหรับหน้า Home
+export async function getDiscoverBooks() {
+  const result = await apiRequest('/api/books/discover');
+
+  if (Array.isArray(result)) {
+    return result;
+  }
+
+  if (Array.isArray(result?.data)) {
+    return result.data;
+  }
+
+  if (Array.isArray(result?.data?.data)) {
+    return result.data.data;
+  }
+
+  if (Array.isArray(result?.books)) {
+    return result.books;
+  }
+
+  console.warn(
+    'รูปแบบข้อมูล Discover ไม่ถูกต้อง:',
+    result
+  );
+
+  return [];
 }
 
 export async function getCategories() {
   const result = await apiRequest('/api/categories');
-  return result.data || [];
+
+  return Array.isArray(result?.data)
+    ? result.data
+    : [];
 }
 
 export async function login(email, password) {
@@ -83,8 +119,13 @@ export async function getMe() {
 }
 
 export async function getBookReviews(bookId) {
-  const result = await apiRequest(`/api/books/${bookId}/reviews`);
-  return result.reviews || [];
+  const result = await apiRequest(
+    `/api/books/${bookId}/reviews`
+  );
+
+  return Array.isArray(result?.reviews)
+    ? result.reviews
+    : [];
 }
 
 export async function createBookReview(bookId, rating, comment) {
@@ -107,11 +148,17 @@ export async function deleteBookReview(reviewId) {
   });
 }
 
+// หนังสือสำหรับหน้า Admin
 export async function adminGetBooks() {
   const result = await apiRequest('/api/admin/books');
-  return result.data || [];
+
+  return Array.isArray(result?.data)
+    ? result.data
+    : [];
 }
 
+// ค้นหาหนังสือภาษาไทยจาก Google Books
+// เป็นการค้นหาเพื่อแสดงตัวอย่างเท่านั้น ยังไม่บันทึกลง Supabase
 export async function searchGoogleBooks(query, options = {}) {
   const params = new URLSearchParams();
 
@@ -129,23 +176,46 @@ export async function searchGoogleBooks(query, options = {}) {
     `/api/admin/external-books?${params.toString()}`
   );
 
-  return result.data || [];
+  return Array.isArray(result?.data)
+    ? result.data
+    : [];
 }
 
+// เพิ่มหนังสือที่แอดมินเลือกแล้วทีละเล่ม
 export async function adminCreateBook(book) {
+  if (!book?.title?.trim()) {
+    throw new Error('กรุณาระบุชื่อหนังสือ');
+  }
+
+  if (!book?.author?.trim()) {
+    throw new Error('กรุณาระบุชื่อผู้แต่ง');
+  }
+
+  if (!/[\u0E00-\u0E7F]/.test(book.title)) {
+    throw new Error('อนุญาตเฉพาะชื่อหนังสือภาษาไทย');
+  }
+
+  if (!book?.cover_url) {
+    throw new Error('ไม่พบรูปปกหนังสือ');
+  }
+
   return apiRequest('/api/admin/books', {
     method: 'POST',
     body: JSON.stringify({
-      title: book.title,
-      author: book.author,
-      description: book.description,
+      title: book.title.trim(),
+      author: book.author.trim(),
+      description: (book.description || '').trim(),
       cover_url: book.cover_url,
-      published_year: book.published_year,
-      category_ids: book.category_ids || [],
+      published_year: book.published_year || null,
+      category_ids: Array.isArray(book.category_ids)
+        ? book.category_ids
+        : [],
     }),
   });
 }
 
+// คงชื่อฟังก์ชันไว้เพื่อไม่ให้ไฟล์เดิมที่ import อยู่เกิดปัญหา
+// แต่ Backend จะปฏิเสธการนำเข้าอัตโนมัติด้วย HTTP 410
 export async function adminBulkImportBooks() {
   return apiRequest('/api/admin/books/bulk-import', {
     method: 'POST',
