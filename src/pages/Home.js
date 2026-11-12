@@ -13,7 +13,12 @@ function Home() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
 
+  // หนังสือทั้งหมด ใช้สำหรับระบบแนะนำ
   const [books, setBooks] = useState([]);
+
+  // หนังสือที่ผ่านการค้นหาและกรองแล้ว
+  const [filteredBooks, setFilteredBooks] = useState([]);
+
   const [interests, setInterests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -23,23 +28,37 @@ function Home() {
 
   const selectedCategory = searchParams.get('category') || 'ทั้งหมด';
 
-  // โหลดข้อมูลหนังสือจาก Backend
+  // โหลดหนังสือทั้งหมดครั้งแรก
   useEffect(() => {
+    let cancelled = false;
+
     async function fetchBooks() {
       try {
         setLoading(true);
         setError('');
 
         const data = await getBooks();
-        setBooks(data);
+
+        if (!cancelled) {
+          setBooks(data);
+          setFilteredBooks(data);
+        }
       } catch (err) {
-        setError(err.message || 'ไม่สามารถโหลดข้อมูลหนังสือได้');
+        if (!cancelled) {
+          setError(err.message || 'ไม่สามารถโหลดข้อมูลหนังสือได้');
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
     fetchBooks();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // โหลดความสนใจของสมาชิก
@@ -64,6 +83,41 @@ function Home() {
     }
   }, [user]);
 
+  // ค้นหาหนังสือผ่าน Backend เมื่อคำค้นหาหรือหมวดหมู่เปลี่ยน
+  useEffect(() => {
+    let cancelled = false;
+
+    const timer = setTimeout(async () => {
+      try {
+        setLoading(true);
+        setError('');
+
+        const data = await getBooks({
+          search: searchTerm,
+          category: selectedCategory,
+        });
+
+        if (!cancelled) {
+          setFilteredBooks(data);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.message || 'ไม่สามารถค้นหาหนังสือได้');
+          setFilteredBooks([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchTerm, selectedCategory]);
+
   // ค้นหาหนังสือที่ตรงกับความสนใจ
   const recommendedBooks = books
     .map((book) => {
@@ -78,25 +132,6 @@ function Home() {
     })
     .filter((book) => book.matchedCategories.length > 0)
     .slice(0, 4);
-
-  // ค้นหาและกรองหนังสือ
-  const filteredBooks = books.filter((book) => {
-    const keyword = searchTerm.toLowerCase();
-
-    const matchesSearch =
-      (book.title || '').toLowerCase().includes(keyword) ||
-      (book.author || '').toLowerCase().includes(keyword) ||
-      (book.description || '').toLowerCase().includes(keyword) ||
-      (book.categories || []).some((category) =>
-        category.toLowerCase().includes(keyword)
-      );
-
-    const matchesCategory =
-      selectedCategory === 'ทั้งหมด' ||
-      (book.categories || []).includes(selectedCategory);
-
-    return matchesSearch && matchesCategory;
-  });
 
   // ล้างตัวกรองทั้งหมด
   const clearFilters = () => {
@@ -193,11 +228,11 @@ function Home() {
                 เลือกความสนใจของฉัน
               </Link>
             </div>
-          ) : loading ? (
+          ) : loading && books.length === 0 ? (
             <div className="py-12 text-center text-autumn-brown">
               กำลังค้นหาหนังสือที่เหมาะกับคุณ...
             </div>
-          ) : error ? (
+          ) : error && books.length === 0 ? (
             <div className="rounded-2xl bg-white p-8 text-center text-autumn-brown">
               ยังไม่สามารถโหลดหนังสือแนะนำได้ในขณะนี้
             </div>
@@ -336,7 +371,10 @@ function Home() {
 
             <button
               type="button"
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                setSearchTerm('');
+                setSearchParams({});
+              }}
               className="mt-5 rounded-full bg-autumn-chestnut px-6 py-2 text-white transition hover:bg-autumn-copper"
             >
               ลองอีกครั้ง

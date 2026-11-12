@@ -14,6 +14,7 @@ import MyBookshelf from './pages/MyBookshelf';
 import Interests from './pages/Interests';
 import Recommendations from './pages/Recommendations';
 import AdminDashboard from './pages/AdminDashboard';
+import AdminBooks from './pages/AdminBooks';
 
 import { AuthProvider } from './context/AuthContext';
 
@@ -72,6 +73,15 @@ function App() {
                 element={
                   <ProtectedRoute allowedRoles={['admin']}>
                     <AdminDashboard />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/admin/books"
+                element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminBooks />
                   </ProtectedRoute>
                 }
               />

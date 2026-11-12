@@ -1,5 +1,6 @@
 
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { apiRequest } from '../api/backend';
 
 function AdminDashboard() {
@@ -8,6 +9,7 @@ function AdminDashboard() {
     members: 0,
     admins: 0,
   });
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -35,16 +37,27 @@ function AdminDashboard() {
   return (
     <div className="min-h-screen bg-autumn-cream px-6 py-10">
       <div className="mx-auto max-w-6xl">
-        <h1 className="mb-2 text-3xl font-bold text-autumn-dark">
-          Admin Dashboard
-        </h1>
+        <div className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
+          <div>
+            <h1 className="mb-2 text-3xl font-bold text-autumn-dark">
+              Admin Dashboard
+            </h1>
+            <p className="text-autumn-brown">
+              ภาพรวมและจัดการระบบ BookMellow
+            </p>
+          </div>
 
-        <p className="mb-8 text-autumn-brown">
-          ภาพรวมและจัดการระบบ BookMellow
-        </p>
+          <Link
+            to="/admin/books"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-autumn-dark px-6 py-3 font-semibold text-white shadow-sm transition hover:opacity-90"
+          >
+            <span>＋</span>
+            จัดการหนังสือ
+          </Link>
+        </div>
 
         {loading ? (
-          <p className="text-autumn-brown">กำลังโหลดข้อมูล...</p>
+          <p>กำลังโหลดข้อมูล...</p>
         ) : error ? (
           <p className="text-red-600">{error}</p>
         ) : (
@@ -54,11 +67,8 @@ function AdminDashboard() {
                 key={card.title}
                 className="rounded-2xl bg-white p-6 shadow-sm"
               >
-                <p className="text-sm text-autumn-brown">
-                  {card.title}
-                </p>
-
-                <p className="mt-3 text-4xl font-bold text-autumn-dark">
+                <p className="text-autumn-brown">{card.title}</p>
+                <p className="mt-2 text-3xl font-bold text-autumn-dark">
                   {card.value}
                 </p>
               </div>
