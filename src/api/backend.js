@@ -22,7 +22,6 @@ export async function apiRequest(path, options = {}) {
   });
 
   const contentType = response.headers.get('content-type');
-
   const result = contentType?.includes('application/json')
     ? await response.json()
     : null;
@@ -45,59 +44,35 @@ export async function getBooks(options = {}) {
   const search = options.search?.trim() || '';
   const category = options.category?.trim() || '';
 
-  if (search) {
-    params.set('search', search);
-  }
-
+  if (search) params.set('search', search);
   if (category && category !== 'ทั้งหมด') {
     params.set('category', category);
   }
 
   const query = params.toString();
-
   const result = await apiRequest(
     `/api/books${query ? `?${query}` : ''}`
   );
 
-  return Array.isArray(result?.data)
-    ? result.data
-    : [];
+  return Array.isArray(result?.data) ? result.data : [];
 }
 
 // หนังสือเพิ่มเติมจาก Google Books สำหรับหน้า Home
 export async function getDiscoverBooks() {
   const result = await apiRequest('/api/books/discover');
 
-  if (Array.isArray(result)) {
-    return result;
-  }
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.data)) return result.data;
+  if (Array.isArray(result?.data?.data)) return result.data.data;
+  if (Array.isArray(result?.books)) return result.books;
 
-  if (Array.isArray(result?.data)) {
-    return result.data;
-  }
-
-  if (Array.isArray(result?.data?.data)) {
-    return result.data.data;
-  }
-
-  if (Array.isArray(result?.books)) {
-    return result.books;
-  }
-
-  console.warn(
-    'รูปแบบข้อมูล Discover ไม่ถูกต้อง:',
-    result
-  );
-
+  console.warn('รูปแบบข้อมูล Discover ไม่ถูกต้อง:', result);
   return [];
 }
 
 export async function getCategories() {
   const result = await apiRequest('/api/categories');
-
-  return Array.isArray(result?.data)
-    ? result.data
-    : [];
+  return Array.isArray(result?.data) ? result.data : [];
 }
 
 export async function login(email, password) {
@@ -119,13 +94,8 @@ export async function getMe() {
 }
 
 export async function getBookReviews(bookId) {
-  const result = await apiRequest(
-    `/api/books/${bookId}/reviews`
-  );
-
-  return Array.isArray(result?.reviews)
-    ? result.reviews
-    : [];
+  const result = await apiRequest(`/api/books/${bookId}/reviews`);
+  return Array.isArray(result?.reviews) ? result.reviews : [];
 }
 
 export async function createBookReview(bookId, rating, comment) {
@@ -151,37 +121,25 @@ export async function deleteBookReview(reviewId) {
 // หนังสือสำหรับหน้า Admin
 export async function adminGetBooks() {
   const result = await apiRequest('/api/admin/books');
-
-  return Array.isArray(result?.data)
-    ? result.data
-    : [];
+  return Array.isArray(result?.data) ? result.data : [];
 }
 
-// ค้นหาหนังสือภาษาไทยจาก Google Books
-// เป็นการค้นหาเพื่อแสดงตัวอย่างเท่านั้น ยังไม่บันทึกลง Supabase
+// ค้นหาหนังสือภาษาไทยจาก Google Books เพื่อให้แอดมินเลือกเอง
 export async function searchGoogleBooks(query, options = {}) {
   const params = new URLSearchParams();
-
   params.set('q', query);
 
-  if (options.lang) {
-    params.set('lang', options.lang);
-  }
-
-  if (options.genre) {
-    params.set('genre', options.genre);
-  }
+  if (options.lang) params.set('lang', options.lang);
+  if (options.genre) params.set('genre', options.genre);
 
   const result = await apiRequest(
     `/api/admin/external-books?${params.toString()}`
   );
 
-  return Array.isArray(result?.data)
-    ? result.data
-    : [];
+  return Array.isArray(result?.data) ? result.data : [];
 }
 
-// เพิ่มหนังสือที่แอดมินเลือกแล้วทีละเล่ม
+// เพิ่มหนังสือที่แอดมินเลือกเอง
 export async function adminCreateBook(book) {
   if (!book?.title?.trim()) {
     throw new Error('กรุณาระบุชื่อหนังสือ');
@@ -214,8 +172,7 @@ export async function adminCreateBook(book) {
   });
 }
 
-// คงชื่อฟังก์ชันไว้เพื่อไม่ให้ไฟล์เดิมที่ import อยู่เกิดปัญหา
-// แต่ Backend จะปฏิเสธการนำเข้าอัตโนมัติด้วย HTTP 410
+// นำเข้าหนังสืออัตโนมัติจาก Google Books แล้วบันทึกลง Supabase
 export async function adminBulkImportBooks() {
   return apiRequest('/api/admin/books/bulk-import', {
     method: 'POST',

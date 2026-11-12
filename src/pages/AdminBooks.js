@@ -3,6 +3,7 @@ import {
   adminGetBooks,
   searchGoogleBooks,
   adminCreateBook,
+  adminBulkImportBooks,
   getCategories,
 } from '../api/backend';
 
@@ -22,10 +23,7 @@ const genres = [
 ];
 
 function normalize(value) {
-  return (value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
+  return (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 function hasThai(value) {
@@ -46,13 +44,14 @@ function AdminBooks() {
 
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [autoImporting, setAutoImporting] = useState(false);
 
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [searched, setSearched] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [autoImportResult, setAutoImportResult] = useState(null);
 
-  // โหลดหนังสือและหมวดหมู่จากระบบ
   async function loadData() {
     const [bookData, categoryData] = await Promise.all([
       adminGetBooks(),
@@ -69,8 +68,6 @@ function AdminBooks() {
     });
   }, []);
 
-  // ตรวจซ้ำกับหนังสือทั้งหมดที่ API ส่งกลับมา
-  // การตรวจซ้ำขั้นสุดท้ายจะทำที่ฐานข้อมูลอีกครั้ง
   function findExistingBook(book) {
     return books.find(
       (item) =>
@@ -80,7 +77,6 @@ function AdminBooks() {
   }
 
   // นับเฉพาะหนังสือที่เปิดแสดง
-  // หาก API ส่งหนังสือที่ซ่อนมาด้วย ต้องมี is_visible: false
   const visibleBooks = books.filter(
     (book) => book.is_visible !== false
   );
@@ -93,6 +89,54 @@ function AdminBooks() {
   );
 
   const selectedCount = selectedBooks.length;
+
+  // เพิ่มหนังสืออัตโนมัติ
+  async function handleAutoImport() {
+    if (remaining <= 0) {
+      setError('มีหนังสือที่แสดงครบ 100 เล่มแล้ว');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `ต้องการให้ระบบค้นหาและนำเข้าหนังสือภาษาไทยโดยอัตโนมัติหรือไม่?\n\n` +
+      `จำนวนที่ยังขาด: ${remaining} เล่ม\n` +
+      `ระบบจะตรวจสอบรายการซ้ำและบันทึกหนังสือลงฐานข้อมูล`
+    );
+
+    if (!confirmed) return;
+
+    setAutoImporting(true);
+    setError('');
+    setMessage('');
+    setAutoImportResult(null);
+    setImportResult(null);
+
+    try {
+      const result = await adminBulkImportBooks();
+
+      await loadData();
+
+      setAutoImportResult(result);
+
+      const inserted = Number(result?.inserted || 0);
+      const skipped = Number(result?.skipped || 0);
+      const total = Number(
+        result?.total_books_in_database ??
+        result?.total ??
+        0
+      );
+
+      setMessage(
+        `นำเข้าอัตโนมัติเสร็จแล้ว เพิ่มสำเร็จ ${inserted} เล่ม` +
+        (skipped > 0 ? ` ข้าม ${skipped} เล่ม` : '') +
+        (total > 0 ? ` · จำนวนในฐานข้อมูลทั้งหมด ${total} เล่ม` : '')
+      );
+    } catch (err) {
+      setError(err.message || 'ไม่สามารถนำเข้าหนังสืออัตโนมัติได้');
+    } finally {
+      setAutoImporting(false);
+    }
+  }
 
   function handleSearch(event) {
     event.preventDefault();
@@ -133,7 +177,6 @@ function AdminBooks() {
       setResults(thaiBooks);
 
       const initialDescriptions = {};
-
       thaiBooks.forEach((book) => {
         initialDescriptions[book.google_books_id] =
           book.description || '';
@@ -159,9 +202,7 @@ function AdminBooks() {
       (item) => item.google_books_id === bookId
     );
 
-    if (!book || findExistingBook(book)) {
-      return;
-    }
+    if (!book || findExistingBook(book)) return;
 
     setSelected((previous) => {
       const isCurrentlySelected = Boolean(previous[bookId]);
@@ -182,12 +223,11 @@ function AdminBooks() {
       (book) => !findExistingBook(book)
     );
 
-    if (available.length === 0 || remaining === 0) {
-      return;
-    }
+    if (available.length === 0 || remaining === 0) return;
 
-    const allAvailableSelected =
-      available.every((book) => selected[book.google_books_id]);
+    const allAvailableSelected = available.every(
+      (book) => selected[book.google_books_id]
+    );
 
     if (allAvailableSelected) {
       setSelected({});
@@ -198,10 +238,7 @@ function AdminBooks() {
     let count = 0;
 
     for (const book of available) {
-      if (count >= remaining) {
-        break;
-      }
-
+      if (count >= remaining) break;
       next[book.google_books_id] = true;
       count++;
     }
@@ -263,9 +300,7 @@ function AdminBooks() {
       `ยืนยันนำเข้าหนังสือภาษาไทย ${selectedCount} เล่มหรือไม่?`
     );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     setImporting(true);
     setError('');
@@ -306,11 +341,7 @@ function AdminBooks() {
 
       await loadData();
 
-      setImportResult({
-        success,
-        failed,
-      });
-
+      setImportResult({ success, failed });
       setSelected({});
       setSelectedCategories({});
 
@@ -319,13 +350,13 @@ function AdminBooks() {
         (failed.length ? ` และข้าม ${failed.length} เล่ม` : '')
       );
     } catch (err) {
-      setError(
-        err.message || 'ไม่สามารถโหลดข้อมูลหลังนำเข้าได้'
-      );
+      setError(err.message || 'ไม่สามารถโหลดข้อมูลหลังนำเข้าได้');
     } finally {
       setImporting(false);
     }
   }
+
+  const busy = loading || importing || autoImporting;
 
   return (
     <div className="min-h-screen bg-autumn-cream px-4 py-8 sm:px-6">
@@ -335,12 +366,12 @@ function AdminBooks() {
           <h1 className="text-3xl font-bold text-autumn-dark">
             จัดการหนังสือ
           </h1>
-
           <p className="mt-2 text-autumn-brown">
-            คัดเลือกหนังสือภาษาไทยที่น่าอ่านสำหรับ BookMellow
+            คัดเลือกหนังสือภาษาไทยที่น่าอ่านและทันสมัยสำหรับ BookMellow
           </p>
         </div>
 
+        {/* จำนวนหนังสือ */}
         <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
           <p className="text-sm text-autumn-brown">
             หนังสือที่แสดงในระบบ
@@ -364,9 +395,88 @@ function AdminBooks() {
           </div>
         </div>
 
+        {/* นำเข้าอัตโนมัติ */}
+        <div className="mb-6 rounded-2xl border border-autumn-brown/20 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-bold text-autumn-dark">
+            เพิ่มหนังสืออัตโนมัติ
+          </h2>
+
+          <p className="mt-2 text-sm leading-6 text-gray-600">
+            ให้ระบบค้นหาหนังสือภาษาไทยจาก Google Books ตามแนวหนังสือที่กำหนด
+            ตรวจสอบข้อมูลและรายการซ้ำ ก่อนบันทึกลงฐานข้อมูล Supabase
+          </p>
+
+          <p className="mt-2 text-sm text-autumn-brown">
+            เป้าหมาย 100 เล่ม · ขณะนี้ยังขาด {remaining} เล่ม
+          </p>
+
+          <button
+            type="button"
+            onClick={handleAutoImport}
+            disabled={busy || remaining === 0}
+            className="mt-4 w-full rounded-xl bg-autumn-dark px-6 py-3 font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+          >
+            {autoImporting
+              ? 'กำลังค้นหาและเพิ่มหนังสืออัตโนมัติ...'
+              : remaining === 0
+                ? 'มีหนังสือครบ 100 เล่มแล้ว'
+                : `เพิ่มหนังสืออัตโนมัติ (ยังขาด ${remaining} เล่ม)`}
+          </button>
+
+          {autoImporting && (
+            <p className="mt-3 text-sm text-autumn-brown">
+              กรุณารอจนกว่าระบบจะค้นหาและบันทึกหนังสือเสร็จ
+              อย่าปิดหรือรีเฟรชหน้านี้ระหว่างทำรายการ
+            </p>
+          )}
+
+          {autoImportResult && (
+            <div className="mt-4 rounded-xl bg-gray-50 p-4">
+              <p className="font-semibold text-autumn-dark">
+                ผลการนำเข้าอัตโนมัติ
+              </p>
+
+              <div className="mt-2 grid gap-2 text-sm sm:grid-cols-3">
+                <p>
+                  เพิ่มสำเร็จ:{' '}
+                  <strong>{autoImportResult.inserted ?? 0}</strong> เล่ม
+                </p>
+                <p>
+                  ข้ามรายการ:{' '}
+                  <strong>{autoImportResult.skipped ?? 0}</strong> เล่ม
+                </p>
+                <p>
+                  พบรายการ:{' '}
+                  <strong>{autoImportResult.found ?? 0}</strong> เล่ม
+                </p>
+              </div>
+
+              {autoImportResult.message && (
+                <p className="mt-2 text-sm text-gray-600">
+                  {autoImportResult.message}
+                </p>
+              )}
+
+              {autoImportResult.skip_reasons && (
+                <div className="mt-3 text-xs text-gray-500">
+                  <p className="font-semibold">รายละเอียดรายการที่ข้าม</p>
+                  {Object.entries(autoImportResult.skip_reasons).map(
+                    ([key, value]) => (
+                      <p key={key}>
+                        {key}: {value}
+                      </p>
+                    )
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ค้นหาและเพิ่มด้วยตนเอง */}
         <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
           <h2 className="mb-4 text-lg font-bold text-autumn-dark">
-            ค้นหาหนังสือภาษาไทย
+            ค้นหาและเลือกหนังสือด้วยตนเอง
           </h2>
 
           <form onSubmit={handleSearch} className="space-y-4">
@@ -379,7 +489,7 @@ function AdminBooks() {
                 type="text"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="เช่น Good Vibes, Good Life, นิยายสืบสวนญี่ปุ่น..."
+                placeholder="เช่น Good Vibes, นิยายสืบสวนญี่ปุ่น, จิตวิทยา..."
                 className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-autumn-brown"
               />
             </div>
@@ -404,7 +514,7 @@ function AdminBooks() {
 
             <button
               type="submit"
-              disabled={loading || importing || remaining === 0}
+              disabled={busy || remaining === 0}
               className="w-full rounded-xl bg-autumn-dark px-6 py-3 font-medium text-white hover:opacity-90 disabled:opacity-50 sm:w-auto"
             >
               {loading ? 'กำลังค้นหา...' : 'ค้นหาหนังสือ'}
@@ -433,7 +543,7 @@ function AdminBooks() {
         {importResult && (
           <div className="mb-6 rounded-xl bg-white p-5 shadow-sm">
             <h2 className="font-bold text-autumn-dark">
-              ผลการนำเข้า
+              ผลการนำเข้าด้วยตนเอง
             </h2>
 
             <p className="mt-2 text-green-700">
@@ -443,7 +553,6 @@ function AdminBooks() {
             {importResult.failed.length > 0 && (
               <div className="mt-3 text-sm text-amber-700">
                 <p>รายการที่ข้าม:</p>
-
                 {importResult.failed.map((item, index) => (
                   <p key={`${index}-${item}`}>{item}</p>
                 ))}
@@ -459,7 +568,6 @@ function AdminBooks() {
                 <p className="font-semibold text-autumn-dark">
                   พบหนังสือภาษาไทย {results.length} รายการ
                 </p>
-
                 <p className="text-sm text-gray-500">
                   เลือกแล้ว {selectedCount} เล่ม
                 </p>
@@ -468,7 +576,7 @@ function AdminBooks() {
               <button
                 type="button"
                 onClick={toggleAll}
-                disabled={remaining === 0 || importing}
+                disabled={remaining === 0 || busy}
                 className="rounded-lg border border-autumn-brown px-4 py-2 text-sm text-autumn-dark disabled:opacity-50"
               >
                 เลือก / ยกเลิกทั้งหมด
@@ -484,8 +592,7 @@ function AdminBooks() {
                 type="button"
                 onClick={handleImportSelected}
                 disabled={
-                  importing ||
-                  loading ||
+                  busy ||
                   selectedCount === 0 ||
                   selectedCount > remaining
                 }
@@ -525,7 +632,7 @@ function AdminBooks() {
                           type="checkbox"
                           checked={isSelected}
                           disabled={
-                            importing ||
+                            busy ||
                             existing ||
                             (!isSelected && selectedCount >= remaining)
                           }
@@ -568,7 +675,7 @@ function AdminBooks() {
                       <textarea
                         rows={4}
                         value={descriptions[bookId] ?? ''}
-                        disabled={importing}
+                        disabled={busy}
                         onChange={(event) =>
                           setDescriptions((previous) => ({
                             ...previous,
@@ -593,7 +700,7 @@ function AdminBooks() {
                               >
                                 <input
                                   type="checkbox"
-                                  disabled={importing}
+                                  disabled={busy}
                                   checked={(
                                     selectedCategories[bookId] || []
                                   ).includes(category.id)}
@@ -601,7 +708,6 @@ function AdminBooks() {
                                     toggleCategory(bookId, category.id)
                                   }
                                 />
-
                                 {category.name}
                               </label>
                             ))}
@@ -621,7 +727,6 @@ function AdminBooks() {
             ไม่พบหนังสือภาษาไทยที่ตรงกับคำค้นหา ลองค้นหาด้วยชื่อหนังสืออื่นค่ะ
           </div>
         )}
-
       </div>
     </div>
   );
