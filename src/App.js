@@ -15,7 +15,6 @@ import Books from './pages/Books';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
 
 // Member pages
 import Profile from './pages/Profile';
@@ -53,10 +52,6 @@ function App() {
               <Route
                 path="/forgot-password"
                 element={<ForgotPassword />}
-              />
-              <Route
-                path="/reset-password"
-                element={<ResetPassword />}
               />
 
               {/* Error */}
