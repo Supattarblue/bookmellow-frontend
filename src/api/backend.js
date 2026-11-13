@@ -49,7 +49,6 @@ export async function apiRequest(path, options = {}) {
 // BOOKS
 // ========================================
 
-// หนังสือจากระบบ
 export async function getBooks(options = {}) {
   const params = new URLSearchParams();
 
@@ -71,7 +70,6 @@ export async function getBooks(options = {}) {
   return Array.isArray(result?.data) ? result.data : [];
 }
 
-// หนังสือเพิ่มเติมจาก Google Books สำหรับหน้า Home
 export async function getDiscoverBooks() {
   const result = await apiRequest('/api/books/discover');
 
@@ -112,30 +110,16 @@ export async function register(username, email, password) {
   });
 }
 
-// ขออีเมลสำหรับรีเซ็ตรหัสผ่าน
-export async function forgotPassword(email) {
-  if (!email?.trim()) {
-    throw new Error('กรุณาระบุอีเมล');
+// เปลี่ยนรหัสผ่านด้วยอีเมลสมาชิก
+export async function forgotPassword(email, newPassword) {
+  if (!email?.trim() || !newPassword) {
+    throw new Error('กรุณากรอกอีเมลและรหัสผ่านใหม่');
   }
 
   return apiRequest('/api/auth/forgot-password', {
     method: 'POST',
     body: JSON.stringify({
       email: email.trim(),
-    }),
-  });
-}
-
-// ตั้งรหัสผ่านใหม่
-export async function resetPassword(token, newPassword) {
-  if (!token || !newPassword) {
-    throw new Error('กรุณาระบุ Token และรหัสผ่านใหม่');
-  }
-
-  return apiRequest('/api/auth/reset-password', {
-    method: 'POST',
-    body: JSON.stringify({
-      token,
       new_password: newPassword,
     }),
   });
@@ -190,14 +174,12 @@ export async function deleteBookReview(reviewId) {
 // ADMIN - BOOK MANAGEMENT
 // ========================================
 
-// ดึงรายการหนังสือทั้งหมดสำหรับหน้า Admin
 export async function adminGetBooks() {
   const result = await apiRequest('/api/admin/books');
 
   return Array.isArray(result?.data) ? result.data : [];
 }
 
-// ดึงรายละเอียดหนังสือรายเล่ม
 export async function adminGetBook(bookId) {
   const result = await apiRequest(
     `/api/admin/books/${encodeURIComponent(bookId)}`
@@ -206,7 +188,6 @@ export async function adminGetBook(bookId) {
   return result?.book || result?.data || result;
 }
 
-// ค้นหาหนังสือจาก Google Books
 export async function searchGoogleBooks(query, options = {}) {
   const keyword = query?.trim();
 
@@ -232,7 +213,6 @@ export async function searchGoogleBooks(query, options = {}) {
   return Array.isArray(result?.data) ? result.data : [];
 }
 
-// เพิ่มหนังสือ
 export async function adminCreateBook(book) {
   if (!book?.title?.trim()) {
     throw new Error('กรุณาระบุชื่อหนังสือ');
@@ -257,7 +237,6 @@ export async function adminCreateBook(book) {
   });
 }
 
-// แก้ไขหนังสือ
 export async function adminUpdateBook(bookId, book) {
   if (!book?.title?.trim()) {
     throw new Error('กรุณาระบุชื่อหนังสือ');
@@ -285,7 +264,6 @@ export async function adminUpdateBook(bookId, book) {
   );
 }
 
-// ลบหนังสือ
 export async function adminDeleteBook(bookId) {
   return apiRequest(
     `/api/admin/books/${encodeURIComponent(bookId)}`,
@@ -295,23 +273,8 @@ export async function adminDeleteBook(bookId) {
   );
 }
 
-// นำเข้าหนังสืออัตโนมัติจาก Google Books
 export async function adminBulkImportBooks() {
   return apiRequest('/api/admin/books/bulk-import', {
     method: 'POST',
-  });
-}
-
-export async function forgotPassword(email, newPassword) {
-  if (!email?.trim() || !newPassword) {
-    throw new Error('กรุณากรอกอีเมลและรหัสผ่านใหม่');
-  }
-
-  return apiRequest('/api/auth/forgot-password', {
-    method: 'POST',
-    body: JSON.stringify({
-      email: email.trim(),
-      new_password: newPassword,
-    }),
   });
 }
