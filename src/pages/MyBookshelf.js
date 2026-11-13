@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 import BookCard from '../components/BookCard';
@@ -12,7 +12,7 @@ function MyBookshelf() {
   const [selectedBook, setSelectedBook] = useState(null);
 
   // โหลดหนังสือที่สมาชิกบันทึกไว้
-  function loadSavedBooks() {
+  const loadSavedBooks = useCallback(() => {
     if (!user) {
       setBooks([]);
       return;
@@ -30,11 +30,11 @@ function MyBookshelf() {
       console.error('ไม่สามารถโหลดชั้นหนังสือได้:', error);
       setBooks([]);
     }
-  }
+  }, [user]);
 
   useEffect(() => {
     loadSavedBooks();
-  }, [user]);
+  }, [loadSavedBooks]);
 
   return (
     <div className="min-h-screen bg-autumn-cream">

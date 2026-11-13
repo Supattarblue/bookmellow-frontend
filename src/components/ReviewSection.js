@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiRequest } from '../api/backend';
@@ -16,7 +16,7 @@ function ReviewSection({ bookId }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  async function loadReviews() {
+  const loadReviews = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
@@ -31,13 +31,13 @@ function ReviewSection({ bookId }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [bookId]);
 
   useEffect(() => {
     if (bookId) {
       loadReviews();
     }
-  }, [bookId]);
+  }, [bookId, loadReviews]);
 
   const myReview = reviews.find(
     (review) => String(review.user_id) === String(user?.id)
@@ -151,7 +151,6 @@ function ReviewSection({ bookId }) {
         รีวิวจากผู้อ่าน
       </h4>
 
-      {/* คะแนนเฉลี่ย */}
       <div className="mb-6 rounded-2xl bg-autumn-beige p-4">
         <div className="flex items-center gap-3">
           <span className="text-3xl font-semibold text-autumn-chestnut">
@@ -167,7 +166,6 @@ function ReviewSection({ bookId }) {
         </div>
       </div>
 
-      {/* แบบฟอร์มเขียนรีวิว */}
       {user ? (
         myReview && !editingId ? (
           <div className="mb-6 rounded-2xl border border-autumn-beige p-4">
@@ -290,7 +288,6 @@ function ReviewSection({ bookId }) {
         </p>
       )}
 
-      {/* รายการรีวิว */}
       <div className="space-y-4">
         <h5 className="font-semibold text-autumn-chestnut">
           ความคิดเห็นจากสมาชิก
