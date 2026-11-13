@@ -78,6 +78,15 @@ function Login() {
               autoComplete="current-password"
               className="w-full rounded-xl border border-autumn-beige bg-autumn-cream px-4 py-3 outline-none transition focus:border-autumn-copper focus:ring-2 focus:ring-autumn-sand"
             />
+
+            <div className="mt-2 text-right">
+              <Link
+                to="/forgot-password"
+                className="text-sm font-medium text-autumn-copper transition hover:underline"
+              >
+                ลืมรหัสผ่าน?
+              </Link>
+            </div>
           </div>
 
           {error && (

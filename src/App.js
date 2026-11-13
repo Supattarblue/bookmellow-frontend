@@ -9,6 +9,8 @@ import Home from './pages/Home';
 import Books from './pages/Books';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import Profile from './pages/Profile';
 import MyBookshelf from './pages/MyBookshelf';
 import Interests from './pages/Interests';
@@ -18,7 +20,6 @@ import AdminBooks from './pages/AdminBooks';
 import AdminMembers from './pages/AdminMembers';
 import AdminReviews from './pages/AdminReviews';
 import Forbidden from './pages/Forbidden';
-
 
 import { AuthProvider } from './context/AuthContext';
 
@@ -35,6 +36,17 @@ function App() {
               <Route path="/books" element={<Books />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+
+              {/* Password Reset */}
+              <Route
+                path="/forgot-password"
+                element={<ForgotPassword />}
+              />
+              <Route
+                path="/reset-password"
+                element={<ResetPassword />}
+              />
+
               <Route path="/403" element={<Forbidden />} />
 
               <Route

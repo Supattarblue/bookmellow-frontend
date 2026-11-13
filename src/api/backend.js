@@ -1,3 +1,4 @@
+
 const API_URL = process.env.REACT_APP_API_URL;
 
 export async function apiRequest(path, options = {}) {
@@ -86,6 +87,25 @@ export async function register(username, email, password) {
   return apiRequest('/api/auth/register', {
     method: 'POST',
     body: JSON.stringify({ username, email, password }),
+  });
+}
+
+// ขออีเมลสำหรับรีเซ็ตรหัสผ่าน
+export async function forgotPassword(email) {
+  return apiRequest('/api/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+// ตั้งรหัสผ่านใหม่
+export async function resetPassword(token, newPassword) {
+  return apiRequest('/api/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({
+      token,
+      new_password: newPassword,
+    }),
   });
 }
 
