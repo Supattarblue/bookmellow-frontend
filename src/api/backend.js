@@ -301,3 +301,17 @@ export async function adminBulkImportBooks() {
     method: 'POST',
   });
 }
+
+export async function forgotPassword(email, newPassword) {
+  if (!email?.trim() || !newPassword) {
+    throw new Error('กรุณากรอกอีเมลและรหัสผ่านใหม่');
+  }
+
+  return apiRequest('/api/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: email.trim(),
+      new_password: newPassword,
+    }),
+  });
+}
