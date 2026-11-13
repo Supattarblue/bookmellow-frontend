@@ -1,4 +1,6 @@
+
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   adminGetBooks,
   searchGoogleBooks,
@@ -41,6 +43,18 @@ function AdminBooks() {
   const [selected, setSelected] = useState({});
   const [descriptions, setDescriptions] = useState({});
   const [selectedCategories, setSelectedCategories] = useState({});
+
+  // ข้อมูลสำหรับเพิ่มหนังสือด้วยตนเอง
+  const [manualBook, setManualBook] = useState({
+    title: '',
+    author: '',
+    description: '',
+    cover_url: '',
+    published_year: '',
+    category_ids: [],
+  });
+
+  const [manualAdding, setManualAdding] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -89,6 +103,105 @@ function AdminBooks() {
   );
 
   const selectedCount = selectedBooks.length;
+
+  // จัดการการกรอกข้อมูลหนังสือด้วยตนเอง
+  function handleManualChange(event) {
+    const { name, value } = event.target;
+
+    setManualBook((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+  }
+
+  function toggleManualCategory(categoryId) {
+    setManualBook((previous) => {
+      const exists = previous.category_ids.includes(categoryId);
+
+      return {
+        ...previous,
+        category_ids: exists
+          ? previous.category_ids.filter((id) => id !== categoryId)
+          : [...previous.category_ids, categoryId],
+      };
+    });
+  }
+
+  // เพิ่มหนังสือด้วยตนเอง
+  async function handleManualCreate(event) {
+    event.preventDefault();
+
+    setError('');
+    setMessage('');
+
+    if (remaining <= 0) {
+      setError('มีหนังสือที่แสดงครบ 100 เล่มแล้ว');
+      return;
+    }
+
+    if (!manualBook.title.trim() || !manualBook.author.trim()) {
+      setError('กรุณากรอกชื่อหนังสือและชื่อผู้แต่ง');
+      return;
+    }
+
+    const existing = findExistingBook(manualBook);
+
+    if (existing) {
+      setError('หนังสือชื่อนี้และผู้แต่งคนนี้มีอยู่ในระบบแล้ว');
+      return;
+    }
+
+    let publishedYear = null;
+
+    if (manualBook.published_year.trim()) {
+      publishedYear = Number(manualBook.published_year);
+
+      if (
+        !Number.isInteger(publishedYear) ||
+        publishedYear < 1 ||
+        publishedYear > 9999
+      ) {
+        setError('กรุณากรอกปีที่พิมพ์ให้ถูกต้อง');
+        return;
+      }
+    }
+
+    const confirmed = window.confirm(
+      `ยืนยันเพิ่มหนังสือ "${manualBook.title.trim()}" หรือไม่?`
+    );
+
+    if (!confirmed) return;
+
+    setManualAdding(true);
+
+    try {
+      await adminCreateBook({
+        title: manualBook.title,
+        author: manualBook.author,
+        description: manualBook.description,
+        cover_url: manualBook.cover_url.trim() || null,
+        published_year: publishedYear,
+        category_ids: manualBook.category_ids,
+      });
+
+      await loadData();
+
+      setManualBook({
+        title: '',
+        author: '',
+        description: '',
+        cover_url: '',
+        published_year: '',
+        category_ids: [],
+      });
+
+      setMessage('เพิ่มหนังสือเรียบร้อยแล้ว');
+    } catch (err) {
+      setError(err.message || 'ไม่สามารถเพิ่มหนังสือได้');
+    } finally {
+      setManualAdding(false);
+    }
+  }
 
   // เพิ่มหนังสืออัตโนมัติ
   async function handleAutoImport() {
@@ -356,11 +469,22 @@ function AdminBooks() {
     }
   }
 
-  const busy = loading || importing || autoImporting;
+  const busy =
+    loading || importing || autoImporting || manualAdding;
 
   return (
     <div className="min-h-screen bg-autumn-cream px-4 py-8 sm:px-6">
       <div className="mx-auto max-w-6xl">
+
+        {/* ปุ่มกลับหน้า Dashboard */}
+        <div className="mb-6">
+          <Link
+            to="/admin"
+            className="inline-flex items-center rounded-xl bg-white px-4 py-2 font-medium text-autumn-dark shadow-sm transition hover:bg-autumn-cream"
+          >
+            ← กลับหน้า Dashboard
+          </Link>
+        </div>
 
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-autumn-dark">
@@ -393,6 +517,144 @@ function AdminBooks() {
               }}
             />
           </div>
+        </div>
+
+        {/* เพิ่มหนังสือด้วยตนเอง */}
+        <div className="mb-6 rounded-2xl border border-autumn-brown/20 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-bold text-autumn-dark">
+            เพิ่มหนังสือด้วยตนเอง
+          </h2>
+
+          <p className="mt-2 text-sm leading-6 text-gray-600">
+            กรอกข้อมูลหนังสือที่ต้องการเพิ่มได้โดยตรง
+            ไม่จำเป็นต้องค้นหาจาก Google Books
+          </p>
+
+          <form onSubmit={handleManualCreate} className="mt-5 space-y-4">
+
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-autumn-dark">
+                ชื่อหนังสือ *
+              </label>
+              <input
+                type="text"
+                name="title"
+                value={manualBook.title}
+                onChange={handleManualChange}
+                required
+                disabled={busy || remaining === 0}
+                placeholder="กรอกชื่อหนังสือ"
+                className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-autumn-brown disabled:bg-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-autumn-dark">
+                ชื่อผู้แต่ง *
+              </label>
+              <input
+                type="text"
+                name="author"
+                value={manualBook.author}
+                onChange={handleManualChange}
+                required
+                disabled={busy || remaining === 0}
+                placeholder="กรอกชื่อผู้แต่ง"
+                className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-autumn-brown disabled:bg-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-autumn-dark">
+                คำอธิบายหนังสือ
+              </label>
+              <textarea
+                name="description"
+                value={manualBook.description}
+                onChange={handleManualChange}
+                rows={4}
+                disabled={busy || remaining === 0}
+                placeholder="รายละเอียดหรือเรื่องย่อของหนังสือ"
+                className="w-full rounded-xl border border-gray-300 p-3 outline-none focus:border-autumn-brown disabled:bg-gray-100"
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-autumn-dark">
+                  ปีที่พิมพ์
+                </label>
+                <input
+                  type="number"
+                  name="published_year"
+                  value={manualBook.published_year}
+                  onChange={handleManualChange}
+                  min="1"
+                  max="9999"
+                  disabled={busy || remaining === 0}
+                  placeholder="เช่น 2025"
+                  className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-autumn-brown disabled:bg-gray-100"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-autumn-dark">
+                  URL รูปปกหนังสือ
+                </label>
+                <input
+                  type="url"
+                  name="cover_url"
+                  value={manualBook.cover_url}
+                  onChange={handleManualChange}
+                  disabled={busy || remaining === 0}
+                  placeholder="https://example.com/cover.jpg"
+                  className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-autumn-brown disabled:bg-gray-100"
+                />
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-500">
+              * ชื่อหนังสือและผู้แต่งเป็นข้อมูลที่จำเป็น
+              ส่วนปีที่พิมพ์และ URL รูปปกสามารถเว้นว่างได้
+            </p>
+
+            {categories.length > 0 && (
+              <div>
+                <p className="mb-3 text-sm font-semibold text-autumn-dark">
+                  เลือกหมวดหมู่หนังสือ
+                </p>
+
+                <div className="flex flex-wrap gap-3">
+                  {categories.map((category) => (
+                    <label
+                      key={category.id}
+                      className="flex items-center gap-2 rounded-lg bg-autumn-cream/60 px-3 py-2 text-sm text-autumn-brown"
+                    >
+                      <input
+                        type="checkbox"
+                        disabled={busy || remaining === 0}
+                        checked={manualBook.category_ids.includes(category.id)}
+                        onChange={() => toggleManualCategory(category.id)}
+                      />
+                      {category.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={busy || remaining === 0}
+              className="w-full rounded-xl bg-autumn-brown px-6 py-3 font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            >
+              {manualAdding
+                ? 'กำลังบันทึกหนังสือ...'
+                : remaining === 0
+                  ? 'มีหนังสือครบ 100 เล่มแล้ว'
+                  : '＋ เพิ่มหนังสือ'}
+            </button>
+          </form>
         </div>
 
         {/* นำเข้าอัตโนมัติ */}
@@ -473,10 +735,10 @@ function AdminBooks() {
           )}
         </div>
 
-        {/* ค้นหาและเพิ่มด้วยตนเอง */}
+        {/* ค้นหาและเลือกหนังสือจาก Google Books */}
         <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
           <h2 className="mb-4 text-lg font-bold text-autumn-dark">
-            ค้นหาและเลือกหนังสือด้วยตนเอง
+            ค้นหาและเลือกหนังสือจาก Google Books
           </h2>
 
           <form onSubmit={handleSearch} className="space-y-4">

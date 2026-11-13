@@ -1,5 +1,6 @@
 
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { apiRequest } from '../api/backend';
 
 function AdminReviews() {
@@ -25,6 +26,15 @@ function AdminReviews() {
   return (
     <div className="min-h-screen bg-autumn-cream px-4 py-8 sm:px-6">
       <div className="mx-auto max-w-6xl">
+
+        <div className="mb-6">
+          <Link
+            to="/admin"
+            className="inline-flex items-center rounded-xl bg-white px-4 py-2 font-medium text-autumn-dark shadow-sm transition hover:bg-autumn-cream"
+          >
+            ← กลับหน้า Dashboard
+          </Link>
+        </div>
 
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-autumn-dark">

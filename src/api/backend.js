@@ -159,7 +159,7 @@ export async function searchGoogleBooks(query, options = {}) {
   return Array.isArray(result?.data) ? result.data : [];
 }
 
-// เพิ่มหนังสือที่แอดมินเลือกเอง
+// เพิ่มหนังสือที่แอดมินเลือกเอง หรือกรอกข้อมูลด้วยตนเอง
 export async function adminCreateBook(book) {
   if (!book?.title?.trim()) {
     throw new Error('กรุณาระบุชื่อหนังสือ');
@@ -169,21 +169,13 @@ export async function adminCreateBook(book) {
     throw new Error('กรุณาระบุชื่อผู้แต่ง');
   }
 
-  if (!/[\u0E00-\u0E7F]/.test(book.title)) {
-    throw new Error('อนุญาตเฉพาะชื่อหนังสือภาษาไทย');
-  }
-
-  if (!book?.cover_url) {
-    throw new Error('ไม่พบรูปปกหนังสือ');
-  }
-
   return apiRequest('/api/admin/books', {
     method: 'POST',
     body: JSON.stringify({
       title: book.title.trim(),
       author: book.author.trim(),
       description: (book.description || '').trim(),
-      cover_url: book.cover_url,
+      cover_url: book.cover_url?.trim() || null,
       published_year: book.published_year || null,
       category_ids: Array.isArray(book.category_ids)
         ? book.category_ids
