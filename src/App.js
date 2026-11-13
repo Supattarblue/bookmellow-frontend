@@ -15,6 +15,10 @@ import Interests from './pages/Interests';
 import Recommendations from './pages/Recommendations';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminBooks from './pages/AdminBooks';
+import AdminMembers from './pages/AdminMembers';
+import AdminReviews from './pages/AdminReviews';
+import Forbidden from './pages/Forbidden';
+
 
 import { AuthProvider } from './context/AuthContext';
 
@@ -31,6 +35,7 @@ function App() {
               <Route path="/books" element={<Books />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/403" element={<Forbidden />} />
 
               <Route
                 path="/profile"
@@ -82,6 +87,24 @@ function App() {
                 element={
                   <ProtectedRoute allowedRoles={['admin']}>
                     <AdminBooks />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/admin/members"
+                element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminMembers />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/admin/reviews"
+                element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminReviews />
                   </ProtectedRoute>
                 }
               />

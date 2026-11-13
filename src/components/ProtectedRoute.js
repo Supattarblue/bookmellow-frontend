@@ -1,4 +1,3 @@
-
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -17,7 +16,7 @@ function ProtectedRoute({ children, allowedRoles }) {
     );
   }
 
-  // ถ้ายังไม่ได้เข้าสู่ระบบ ให้กลับไปหน้า Login
+  // ยังไม่ได้เข้าสู่ระบบ
   if (!user) {
     return (
       <Navigate
@@ -28,9 +27,9 @@ function ProtectedRoute({ children, allowedRoles }) {
     );
   }
 
-  // ตรวจสอบสิทธิ์ตาม Role
+  // เข้าสู่ระบบแล้ว แต่ไม่มีสิทธิ์เข้าถึง
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/403" replace />;
   }
 
   return children;

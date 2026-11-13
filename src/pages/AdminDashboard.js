@@ -34,34 +34,45 @@ function AdminDashboard() {
     { title: 'ผู้ดูแลระบบ', value: stats.admins },
   ];
 
+  const managementLinks = [
+    {
+      title: 'จัดการหนังสือ',
+      description: 'เพิ่ม แก้ไข และจัดการหนังสือในระบบ',
+      path: '/admin/books',
+      icon: '📚',
+    },
+    {
+      title: 'จัดการสมาชิก',
+      description: 'ดูรายชื่อสมาชิกและเปลี่ยนสิทธิ์เป็น Admin หรือ Member',
+      path: '/admin/members',
+      icon: '👥',
+    },
+    {
+      title: 'รีวิวทั้งหมด',
+      description: 'ตรวจสอบรีวิวและความคิดเห็นของสมาชิกทั้งหมด',
+      path: '/admin/reviews',
+      icon: '⭐',
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-autumn-cream px-6 py-10">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
-          <div>
-            <h1 className="mb-2 text-3xl font-bold text-autumn-dark">
-              Admin Dashboard
-            </h1>
-            <p className="text-autumn-brown">
-              ภาพรวมและจัดการระบบ BookMellow
-            </p>
-          </div>
-
-          <Link
-            to="/admin/books"
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-autumn-dark px-6 py-3 font-semibold text-white shadow-sm transition hover:opacity-90"
-          >
-            <span>＋</span>
-            จัดการหนังสือ
-          </Link>
+        <div className="mb-8">
+          <h1 className="mb-2 text-3xl font-bold text-autumn-dark">
+            Admin Dashboard
+          </h1>
+          <p className="text-autumn-brown">
+            ภาพรวมและจัดการระบบ BookMellow
+          </p>
         </div>
 
         {loading ? (
-          <p>กำลังโหลดข้อมูล...</p>
+          <p className="text-autumn-brown">กำลังโหลดข้อมูล...</p>
         ) : error ? (
           <p className="text-red-600">{error}</p>
         ) : (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mb-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {cards.map((card) => (
               <div
                 key={card.title}
@@ -75,6 +86,36 @@ function AdminDashboard() {
             ))}
           </div>
         )}
+
+        <div>
+          <h2 className="mb-5 text-2xl font-bold text-autumn-dark">
+            จัดการระบบ
+          </h2>
+
+          <div className="grid gap-5 md:grid-cols-3">
+            {managementLinks.map((item) => (
+              <Link
+                key={item.path}
+                to={item.path}
+                className="group rounded-2xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+              >
+                <div className="mb-4 text-4xl">{item.icon}</div>
+
+                <h3 className="mb-2 text-xl font-bold text-autumn-dark transition group-hover:text-autumn-copper">
+                  {item.title}
+                </h3>
+
+                <p className="mb-5 leading-7 text-autumn-brown">
+                  {item.description}
+                </p>
+
+                <span className="font-semibold text-autumn-copper">
+                  เข้าจัดการ →
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
