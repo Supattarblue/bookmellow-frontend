@@ -22,10 +22,17 @@ export async function apiRequest(path, options = {}) {
     headers,
   });
 
-  const contentType = response.headers.get('content-type');
-  const result = contentType?.includes('application/json')
-    ? await response.json()
-    : null;
+  const responseText = await response.text();
+
+  let result = null;
+
+  if (responseText) {
+    try {
+      result = JSON.parse(responseText);
+    } catch {
+      result = { message: responseText };
+    }
+  }
 
   if (!response.ok) {
     throw new Error(
@@ -42,7 +49,7 @@ export async function apiRequest(path, options = {}) {
 // BOOKS
 // ========================================
 
-// หนังสือจาก Supabase
+// หนังสือจากระบบ
 export async function getBooks(options = {}) {
   const params = new URLSearchParams();
 
@@ -50,11 +57,13 @@ export async function getBooks(options = {}) {
   const category = options.category?.trim() || '';
 
   if (search) params.set('search', search);
+
   if (category && category !== 'ทั้งหมด') {
     params.set('category', category);
   }
 
   const query = params.toString();
+
   const result = await apiRequest(
     `/api/books${query ? `?${query}` : ''}`
   );
@@ -81,6 +90,7 @@ export async function getDiscoverBooks() {
 
 export async function getCategories() {
   const result = await apiRequest('/api/categories');
+
   return Array.isArray(result?.data) ? result.data : [];
 }
 
@@ -104,14 +114,24 @@ export async function register(username, email, password) {
 
 // ขออีเมลสำหรับรีเซ็ตรหัสผ่าน
 export async function forgotPassword(email) {
+  if (!email?.trim()) {
+    throw new Error('กรุณาระบุอีเมล');
+  }
+
   return apiRequest('/api/auth/forgot-password', {
     method: 'POST',
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({
+      email: email.trim(),
+    }),
   });
 }
 
 // ตั้งรหัสผ่านใหม่
 export async function resetPassword(token, newPassword) {
+  if (!token || !newPassword) {
+    throw new Error('กรุณาระบุ Token และรหัสผ่านใหม่');
+  }
+
   return apiRequest('/api/auth/reset-password', {
     method: 'POST',
     body: JSON.stringify({
@@ -130,28 +150,40 @@ export async function getMe() {
 // ========================================
 
 export async function getBookReviews(bookId) {
-  const result = await apiRequest(`/api/books/${bookId}/reviews`);
+  const result = await apiRequest(
+    `/api/books/${encodeURIComponent(bookId)}/reviews`
+  );
+
   return Array.isArray(result?.reviews) ? result.reviews : [];
 }
 
 export async function createBookReview(bookId, rating, comment) {
-  return apiRequest(`/api/books/${bookId}/reviews`, {
-    method: 'POST',
-    body: JSON.stringify({ rating, comment }),
-  });
+  return apiRequest(
+    `/api/books/${encodeURIComponent(bookId)}/reviews`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ rating, comment }),
+    }
+  );
 }
 
 export async function updateBookReview(reviewId, rating, comment) {
-  return apiRequest(`/api/reviews/${reviewId}`, {
-    method: 'PUT',
-    body: JSON.stringify({ rating, comment }),
-  });
+  return apiRequest(
+    `/api/reviews/${encodeURIComponent(reviewId)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ rating, comment }),
+    }
+  );
 }
 
 export async function deleteBookReview(reviewId) {
-  return apiRequest(`/api/reviews/${reviewId}`, {
-    method: 'DELETE',
-  });
+  return apiRequest(
+    `/api/reviews/${encodeURIComponent(reviewId)}`,
+    {
+      method: 'DELETE',
+    }
+  );
 }
 
 // ========================================
@@ -161,6 +193,7 @@ export async function deleteBookReview(reviewId) {
 // ดึงรายการหนังสือทั้งหมดสำหรับหน้า Admin
 export async function adminGetBooks() {
   const result = await apiRequest('/api/admin/books');
+
   return Array.isArray(result?.data) ? result.data : [];
 }
 
@@ -175,11 +208,22 @@ export async function adminGetBook(bookId) {
 
 // ค้นหาหนังสือจาก Google Books
 export async function searchGoogleBooks(query, options = {}) {
-  const params = new URLSearchParams();
-  params.set('q', query);
+  const keyword = query?.trim();
 
-  if (options.lang) params.set('lang', options.lang);
-  if (options.genre) params.set('genre', options.genre);
+  if (!keyword) {
+    throw new Error('กรุณาระบุชื่อหนังสือที่ต้องการค้นหา');
+  }
+
+  const params = new URLSearchParams();
+  params.set('q', keyword);
+
+  if (options.lang) {
+    params.set('lang', options.lang);
+  }
+
+  if (options.genre) {
+    params.set('genre', options.genre);
+  }
 
   const result = await apiRequest(
     `/api/admin/external-books?${params.toString()}`
