@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -8,8 +7,6 @@ import {
   adminBulkImportBooks,
   getCategories,
 } from '../api/backend';
-
-const TARGET = 100;
 
 const genres = [
   { value: 'manga', label: 'มังงะ / การ์ตูนญี่ปุ่น' },
@@ -44,7 +41,6 @@ function AdminBooks() {
   const [descriptions, setDescriptions] = useState({});
   const [selectedCategories, setSelectedCategories] = useState({});
 
-  // ข้อมูลสำหรับเพิ่มหนังสือด้วยตนเอง
   const [manualBook, setManualBook] = useState({
     title: '',
     author: '',
@@ -90,13 +86,11 @@ function AdminBooks() {
     );
   }
 
-  // นับเฉพาะหนังสือที่เปิดแสดง
   const visibleBooks = books.filter(
     (book) => book.is_visible !== false
   );
 
   const visibleCount = visibleBooks.length;
-  const remaining = Math.max(0, TARGET - visibleCount);
 
   const selectedBooks = results.filter(
     (book) => selected[book.google_books_id]
@@ -104,7 +98,6 @@ function AdminBooks() {
 
   const selectedCount = selectedBooks.length;
 
-  // จัดการการกรอกข้อมูลหนังสือด้วยตนเอง
   function handleManualChange(event) {
     const { name, value } = event.target;
 
@@ -127,17 +120,11 @@ function AdminBooks() {
     });
   }
 
-  // เพิ่มหนังสือด้วยตนเอง
   async function handleManualCreate(event) {
     event.preventDefault();
 
     setError('');
     setMessage('');
-
-    if (remaining <= 0) {
-      setError('มีหนังสือที่แสดงครบ 100 เล่มแล้ว');
-      return;
-    }
 
     if (!manualBook.title.trim() || !manualBook.author.trim()) {
       setError('กรุณากรอกชื่อหนังสือและชื่อผู้แต่ง');
@@ -203,16 +190,9 @@ function AdminBooks() {
     }
   }
 
-  // เพิ่มหนังสืออัตโนมัติ
   async function handleAutoImport() {
-    if (remaining <= 0) {
-      setError('มีหนังสือที่แสดงครบ 100 เล่มแล้ว');
-      return;
-    }
-
     const confirmed = window.confirm(
       `ต้องการให้ระบบค้นหาและนำเข้าหนังสือภาษาไทยโดยอัตโนมัติหรือไม่?\n\n` +
-      `จำนวนที่ยังขาด: ${remaining} เล่ม\n` +
       `ระบบจะตรวจสอบรายการซ้ำและบันทึกหนังสือลงฐานข้อมูล`
     );
 
@@ -320,10 +300,6 @@ function AdminBooks() {
     setSelected((previous) => {
       const isCurrentlySelected = Boolean(previous[bookId]);
 
-      if (!isCurrentlySelected && selectedCount >= remaining) {
-        return previous;
-      }
-
       return {
         ...previous,
         [bookId]: !isCurrentlySelected,
@@ -336,7 +312,7 @@ function AdminBooks() {
       (book) => !findExistingBook(book)
     );
 
-    if (available.length === 0 || remaining === 0) return;
+    if (available.length === 0) return;
 
     const allAvailableSelected = available.every(
       (book) => selected[book.google_books_id]
@@ -348,12 +324,9 @@ function AdminBooks() {
     }
 
     const next = {};
-    let count = 0;
 
     for (const book of available) {
-      if (count >= remaining) break;
       next[book.google_books_id] = true;
-      count++;
     }
 
     setSelected(next);
@@ -376,11 +349,6 @@ function AdminBooks() {
   async function handleImportSelected() {
     if (selectedCount === 0) {
       setError('กรุณาเลือกหนังสือที่ต้องการนำเข้าก่อน');
-      return;
-    }
-
-    if (selectedCount > remaining) {
-      setError(`เลือกเกินจำนวนที่เหลือ ${remaining} เล่ม`);
       return;
     }
 
@@ -425,11 +393,6 @@ function AdminBooks() {
 
     try {
       for (const book of selectedBooks) {
-        if (success >= remaining) {
-          failed.push(`${book.title}: จำนวนหนังสือครบ 100 เล่มแล้ว`);
-          continue;
-        }
-
         if (findExistingBook(book)) {
           failed.push(`${book.title}: มีอยู่ในระบบแล้ว`);
           continue;
@@ -476,7 +439,6 @@ function AdminBooks() {
     <div className="min-h-screen bg-autumn-cream px-4 py-8 sm:px-6">
       <div className="mx-auto max-w-6xl">
 
-        {/* ปุ่มกลับหน้า Dashboard */}
         <div className="mb-6">
           <Link
             to="/admin"
@@ -495,31 +457,20 @@ function AdminBooks() {
           </p>
         </div>
 
-        {/* จำนวนหนังสือ */}
         <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
           <p className="text-sm text-autumn-brown">
             หนังสือที่แสดงในระบบ
           </p>
 
           <p className="mt-1 text-3xl font-bold text-autumn-dark">
-            {visibleCount} / {TARGET} เล่ม
+            {visibleCount} เล่ม
           </p>
 
           <p className="mt-1 text-sm text-gray-500">
-            ยังเพิ่มได้อีก {remaining} เล่ม
+            สามารถเพิ่มหนังสือได้โดยไม่จำกัดจำนวน
           </p>
-
-          <div className="mt-4 h-3 w-full overflow-hidden rounded-full bg-gray-200">
-            <div
-              className="h-full rounded-full bg-autumn-brown transition-all"
-              style={{
-                width: `${Math.min((visibleCount / TARGET) * 100, 100)}%`,
-              }}
-            />
-          </div>
         </div>
 
-        {/* เพิ่มหนังสือด้วยตนเอง */}
         <div className="mb-6 rounded-2xl border border-autumn-brown/20 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-bold text-autumn-dark">
             เพิ่มหนังสือด้วยตนเอง
@@ -531,7 +482,6 @@ function AdminBooks() {
           </p>
 
           <form onSubmit={handleManualCreate} className="mt-5 space-y-4">
-
             <div>
               <label className="mb-2 block text-sm font-semibold text-autumn-dark">
                 ชื่อหนังสือ *
@@ -542,7 +492,7 @@ function AdminBooks() {
                 value={manualBook.title}
                 onChange={handleManualChange}
                 required
-                disabled={busy || remaining === 0}
+                disabled={busy}
                 placeholder="กรอกชื่อหนังสือ"
                 className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-autumn-brown disabled:bg-gray-100"
               />
@@ -558,7 +508,7 @@ function AdminBooks() {
                 value={manualBook.author}
                 onChange={handleManualChange}
                 required
-                disabled={busy || remaining === 0}
+                disabled={busy}
                 placeholder="กรอกชื่อผู้แต่ง"
                 className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-autumn-brown disabled:bg-gray-100"
               />
@@ -573,7 +523,7 @@ function AdminBooks() {
                 value={manualBook.description}
                 onChange={handleManualChange}
                 rows={4}
-                disabled={busy || remaining === 0}
+                disabled={busy}
                 placeholder="รายละเอียดหรือเรื่องย่อของหนังสือ"
                 className="w-full rounded-xl border border-gray-300 p-3 outline-none focus:border-autumn-brown disabled:bg-gray-100"
               />
@@ -591,7 +541,7 @@ function AdminBooks() {
                   onChange={handleManualChange}
                   min="1"
                   max="9999"
-                  disabled={busy || remaining === 0}
+                  disabled={busy}
                   placeholder="เช่น 2025"
                   className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-autumn-brown disabled:bg-gray-100"
                 />
@@ -606,7 +556,7 @@ function AdminBooks() {
                   name="cover_url"
                   value={manualBook.cover_url}
                   onChange={handleManualChange}
-                  disabled={busy || remaining === 0}
+                  disabled={busy}
                   placeholder="https://example.com/cover.jpg"
                   className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-autumn-brown disabled:bg-gray-100"
                 />
@@ -632,7 +582,7 @@ function AdminBooks() {
                     >
                       <input
                         type="checkbox"
-                        disabled={busy || remaining === 0}
+                        disabled={busy}
                         checked={manualBook.category_ids.includes(category.id)}
                         onChange={() => toggleManualCategory(category.id)}
                       />
@@ -645,19 +595,14 @@ function AdminBooks() {
 
             <button
               type="submit"
-              disabled={busy || remaining === 0}
+              disabled={busy}
               className="w-full rounded-xl bg-autumn-brown px-6 py-3 font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
             >
-              {manualAdding
-                ? 'กำลังบันทึกหนังสือ...'
-                : remaining === 0
-                  ? 'มีหนังสือครบ 100 เล่มแล้ว'
-                  : '＋ เพิ่มหนังสือ'}
+              {manualAdding ? 'กำลังบันทึกหนังสือ...' : '＋ เพิ่มหนังสือ'}
             </button>
           </form>
         </div>
 
-        {/* นำเข้าอัตโนมัติ */}
         <div className="mb-6 rounded-2xl border border-autumn-brown/20 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-bold text-autumn-dark">
             เพิ่มหนังสืออัตโนมัติ
@@ -668,21 +613,15 @@ function AdminBooks() {
             ตรวจสอบข้อมูลและรายการซ้ำ ก่อนบันทึกลงฐานข้อมูล Supabase
           </p>
 
-          <p className="mt-2 text-sm text-autumn-brown">
-            เป้าหมาย 100 เล่ม · ขณะนี้ยังขาด {remaining} เล่ม
-          </p>
-
           <button
             type="button"
             onClick={handleAutoImport}
-            disabled={busy || remaining === 0}
+            disabled={busy}
             className="mt-4 w-full rounded-xl bg-autumn-dark px-6 py-3 font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
           >
             {autoImporting
               ? 'กำลังค้นหาและเพิ่มหนังสืออัตโนมัติ...'
-              : remaining === 0
-                ? 'มีหนังสือครบ 100 เล่มแล้ว'
-                : `เพิ่มหนังสืออัตโนมัติ (ยังขาด ${remaining} เล่ม)`}
+              : 'เพิ่มหนังสืออัตโนมัติ'}
           </button>
 
           {autoImporting && (
@@ -735,7 +674,6 @@ function AdminBooks() {
           )}
         </div>
 
-        {/* ค้นหาและเลือกหนังสือจาก Google Books */}
         <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
           <h2 className="mb-4 text-lg font-bold text-autumn-dark">
             ค้นหาและเลือกหนังสือจาก Google Books
@@ -776,17 +714,11 @@ function AdminBooks() {
 
             <button
               type="submit"
-              disabled={busy || remaining === 0}
+              disabled={busy}
               className="w-full rounded-xl bg-autumn-dark px-6 py-3 font-medium text-white hover:opacity-90 disabled:opacity-50 sm:w-auto"
             >
               {loading ? 'กำลังค้นหา...' : 'ค้นหาหนังสือ'}
             </button>
-
-            {remaining === 0 && (
-              <p className="text-sm text-amber-700">
-                แคตตาล็อกมีหนังสือครบ 100 เล่มแล้ว
-              </p>
-            )}
           </form>
         </div>
 
@@ -838,7 +770,7 @@ function AdminBooks() {
               <button
                 type="button"
                 onClick={toggleAll}
-                disabled={remaining === 0 || busy}
+                disabled={busy}
                 className="rounded-lg border border-autumn-brown px-4 py-2 text-sm text-autumn-dark disabled:opacity-50"
               >
                 เลือก / ยกเลิกทั้งหมด
@@ -847,17 +779,13 @@ function AdminBooks() {
 
             <div className="mb-5 rounded-xl bg-white p-4 shadow-sm">
               <p className="text-sm text-autumn-brown">
-                เลือกแล้ว {selectedCount} เล่ม · ยังเพิ่มได้อีก {remaining} เล่ม
+                เลือกแล้ว {selectedCount} เล่ม
               </p>
 
               <button
                 type="button"
                 onClick={handleImportSelected}
-                disabled={
-                  busy ||
-                  selectedCount === 0 ||
-                  selectedCount > remaining
-                }
+                disabled={busy || selectedCount === 0}
                 className="mt-3 w-full rounded-xl bg-autumn-brown px-5 py-3 font-semibold text-white disabled:opacity-50 sm:w-auto"
               >
                 {importing
@@ -893,11 +821,7 @@ function AdminBooks() {
                         <input
                           type="checkbox"
                           checked={isSelected}
-                          disabled={
-                            busy ||
-                            existing ||
-                            (!isSelected && selectedCount >= remaining)
-                          }
+                          disabled={busy || existing}
                           onChange={() => toggleBook(bookId)}
                           className="mt-2 h-5 w-5"
                         />
