@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react';
+
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   adminGetBooks,
-  searchGoogleBooks,
+  adminGetBook,
   adminCreateBook,
+  adminUpdateBook,
+  adminDeleteBook,
+  searchGoogleBooks,
   adminBulkImportBooks,
   getCategories,
 } from '../api/backend';
@@ -29,6 +33,30 @@ function hasThai(value) {
   return /[\u0E00-\u0E7F]/.test(value || '');
 }
 
+function getBookCategoryIds(book) {
+  const ids = book?.category_ids ??
+    book?.categoryIds ??
+    book?.categories ??
+    book?.Categories;
+
+  if (!Array.isArray(ids)) return [];
+
+  return ids
+    .map((category) => {
+      if (typeof category === 'string' || typeof category === 'number') {
+        return String(category);
+      }
+
+      return String(
+        category?.id ??
+        category?.category_id ??
+        category?.categoryId ??
+        ''
+      );
+    })
+    .filter(Boolean);
+}
+
 function AdminBooks() {
   const [books, setBooks] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -36,6 +64,7 @@ function AdminBooks() {
 
   const [query, setQuery] = useState('');
   const [genre, setGenre] = useState('self-help');
+  const [bookSearch, setBookSearch] = useState('');
 
   const [selected, setSelected] = useState({});
   const [descriptions, setDescriptions] = useState({});
@@ -50,7 +79,13 @@ function AdminBooks() {
     category_ids: [],
   });
 
+  const [editingBookId, setEditingBookId] = useState(null);
+  const [editBook, setEditBook] = useState(null);
+
   const [manualAdding, setManualAdding] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [deletingBookId, setDeletingBookId] = useState(null);
 
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -62,7 +97,7 @@ function AdminBooks() {
   const [importResult, setImportResult] = useState(null);
   const [autoImportResult, setAutoImportResult] = useState(null);
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     const [bookData, categoryData] = await Promise.all([
       adminGetBooks(),
       getCategories(),
@@ -70,17 +105,18 @@ function AdminBooks() {
 
     setBooks(Array.isArray(bookData) ? bookData : []);
     setCategories(Array.isArray(categoryData) ? categoryData : []);
-  }
+  }, []);
 
   useEffect(() => {
     loadData().catch((err) => {
       setError(err.message || 'ไม่สามารถโหลดข้อมูลได้');
     });
-  }, []);
+  }, [loadData]);
 
-  function findExistingBook(book) {
+  function findExistingBook(book, excludedId = null) {
     return books.find(
       (item) =>
+        String(item.id) !== String(excludedId) &&
         normalize(item.title) === normalize(book.title) &&
         normalize(item.author) === normalize(book.author)
     );
@@ -90,13 +126,31 @@ function AdminBooks() {
     (book) => book.is_visible !== false
   );
 
-  const visibleCount = visibleBooks.length;
+  const filteredBooks = books.filter((book) => {
+    const search = normalize(bookSearch);
+
+    if (!search) return true;
+
+    return (
+      normalize(book.title).includes(search) ||
+      normalize(book.author).includes(search)
+    );
+  });
 
   const selectedBooks = results.filter(
     (book) => selected[book.google_books_id]
   );
 
   const selectedCount = selectedBooks.length;
+
+  const busy =
+    loading ||
+    importing ||
+    autoImporting ||
+    manualAdding ||
+    editLoading ||
+    editSaving ||
+    deletingBookId !== null;
 
   function handleManualChange(event) {
     const { name, value } = event.target;
@@ -109,13 +163,38 @@ function AdminBooks() {
 
   function toggleManualCategory(categoryId) {
     setManualBook((previous) => {
-      const exists = previous.category_ids.includes(categoryId);
+      const id = String(categoryId);
+      const current = previous.category_ids.map(String);
+      const exists = current.includes(id);
 
       return {
         ...previous,
         category_ids: exists
-          ? previous.category_ids.filter((id) => id !== categoryId)
-          : [...previous.category_ids, categoryId],
+          ? current.filter((item) => item !== id)
+          : [...current, id],
+      };
+    });
+  }
+
+  function handleEditChange(event) {
+    const { name, value } = event.target;
+
+    setEditBook((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+  }
+
+  function toggleEditCategory(categoryId) {
+    setEditBook((previous) => {
+      const id = String(categoryId);
+      const exists = previous.category_ids.includes(id);
+
+      return {
+        ...previous,
+        category_ids: exists
+          ? previous.category_ids.filter((item) => item !== id)
+          : [...previous.category_ids, id],
       };
     });
   }
@@ -131,9 +210,7 @@ function AdminBooks() {
       return;
     }
 
-    const existing = findExistingBook(manualBook);
-
-    if (existing) {
+    if (findExistingBook(manualBook)) {
       setError('หนังสือชื่อนี้และผู้แต่งคนนี้มีอยู่ในระบบแล้ว');
       return;
     }
@@ -153,22 +230,16 @@ function AdminBooks() {
       }
     }
 
-    const confirmed = window.confirm(
+    if (!window.confirm(
       `ยืนยันเพิ่มหนังสือ "${manualBook.title.trim()}" หรือไม่?`
-    );
-
-    if (!confirmed) return;
+    )) return;
 
     setManualAdding(true);
 
     try {
       await adminCreateBook({
-        title: manualBook.title,
-        author: manualBook.author,
-        description: manualBook.description,
-        cover_url: manualBook.cover_url.trim() || null,
+        ...manualBook,
         published_year: publishedYear,
-        category_ids: manualBook.category_ids,
       });
 
       await loadData();
@@ -190,13 +261,132 @@ function AdminBooks() {
     }
   }
 
-  async function handleAutoImport() {
-    const confirmed = window.confirm(
-      `ต้องการให้ระบบค้นหาและนำเข้าหนังสือภาษาไทยโดยอัตโนมัติหรือไม่?\n\n` +
-      `ระบบจะตรวจสอบรายการซ้ำและบันทึกหนังสือลงฐานข้อมูล`
-    );
+  async function handleStartEdit(book) {
+    setError('');
+    setMessage('');
+    setEditLoading(true);
 
-    if (!confirmed) return;
+    try {
+      const detail = await adminGetBook(book.id);
+
+      if (!detail) {
+        throw new Error('ไม่พบข้อมูลหนังสือ');
+      }
+
+      const detailCategoryIds = getBookCategoryIds(detail);
+      const listCategoryIds = getBookCategoryIds(book);
+
+      setEditingBookId(book.id);
+      setEditBook({
+        title: detail.title ?? book.title ?? '',
+        author: detail.author ?? book.author ?? '',
+        description: detail.description ?? book.description ?? '',
+        cover_url: detail.cover_url ?? book.cover_url ?? '',
+        published_year:
+          detail.published_year ?? book.published_year ?? '',
+        category_ids:
+          detailCategoryIds.length > 0
+            ? detailCategoryIds
+            : listCategoryIds,
+      });
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      setError(err.message || 'ไม่สามารถโหลดข้อมูลหนังสือได้');
+    } finally {
+      setEditLoading(false);
+    }
+  }
+
+  function cancelEdit() {
+    setEditingBookId(null);
+    setEditBook(null);
+  }
+
+  async function handleUpdateBook(event) {
+    event.preventDefault();
+
+    if (!editBook || !editingBookId) return;
+
+    setError('');
+    setMessage('');
+
+    if (!editBook.title.trim() || !editBook.author.trim()) {
+      setError('กรุณากรอกชื่อหนังสือและชื่อผู้แต่ง');
+      return;
+    }
+
+    if (findExistingBook(editBook, editingBookId)) {
+      setError('มีหนังสือชื่อและผู้แต่งนี้อยู่ในระบบแล้ว');
+      return;
+    }
+
+    let publishedYear = null;
+
+    if (String(editBook.published_year).trim()) {
+      publishedYear = Number(editBook.published_year);
+
+      if (
+        !Number.isInteger(publishedYear) ||
+        publishedYear < 1 ||
+        publishedYear > 9999
+      ) {
+        setError('กรุณากรอกปีที่พิมพ์ให้ถูกต้อง');
+        return;
+      }
+    }
+
+    if (!window.confirm(
+      `ยืนยันแก้ไขข้อมูลหนังสือ "${editBook.title.trim()}" หรือไม่?`
+    )) return;
+
+    setEditSaving(true);
+
+    try {
+      await adminUpdateBook(editingBookId, {
+        ...editBook,
+        published_year: publishedYear,
+      });
+
+      await loadData();
+      cancelEdit();
+      setMessage('แก้ไขข้อมูลหนังสือเรียบร้อยแล้ว');
+    } catch (err) {
+      setError(err.message || 'ไม่สามารถแก้ไขหนังสือได้');
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function handleDeleteBook(book) {
+    if (!window.confirm(
+      `ต้องการลบหนังสือ "${book.title}" ใช่หรือไม่?\n\nการลบนี้จะนำหนังสือออกจากฐานข้อมูล`
+    )) return;
+
+    setError('');
+    setMessage('');
+    setDeletingBookId(book.id);
+
+    try {
+      await adminDeleteBook(book.id);
+
+      if (String(editingBookId) === String(book.id)) {
+        cancelEdit();
+      }
+
+      await loadData();
+      setMessage(`ลบหนังสือ "${book.title}" เรียบร้อยแล้ว`);
+    } catch (err) {
+      setError(err.message || 'ไม่สามารถลบหนังสือได้');
+    } finally {
+      setDeletingBookId(null);
+    }
+  }
+
+  async function handleAutoImport() {
+    if (!window.confirm(
+      'ต้องการให้ระบบค้นหาและนำเข้าหนังสือภาษาไทยโดยอัตโนมัติหรือไม่?'
+    )) return;
 
     setAutoImporting(true);
     setError('');
@@ -206,7 +396,6 @@ function AdminBooks() {
 
     try {
       const result = await adminBulkImportBooks();
-
       await loadData();
 
       setAutoImportResult(result);
@@ -231,7 +420,7 @@ function AdminBooks() {
     }
   }
 
-  function handleSearch(event) {
+  async function handleSearch(event) {
     event.preventDefault();
 
     if (!query.trim()) {
@@ -239,10 +428,6 @@ function AdminBooks() {
       return;
     }
 
-    performSearch();
-  }
-
-  async function performSearch() {
     setLoading(true);
     setError('');
     setMessage('');
@@ -270,6 +455,7 @@ function AdminBooks() {
       setResults(thaiBooks);
 
       const initialDescriptions = {};
+
       thaiBooks.forEach((book) => {
         initialDescriptions[book.google_books_id] =
           book.description || '';
@@ -297,14 +483,10 @@ function AdminBooks() {
 
     if (!book || findExistingBook(book)) return;
 
-    setSelected((previous) => {
-      const isCurrentlySelected = Boolean(previous[bookId]);
-
-      return {
-        ...previous,
-        [bookId]: !isCurrentlySelected,
-      };
-    });
+    setSelected((previous) => ({
+      ...previous,
+      [bookId]: !previous[bookId],
+    }));
   }
 
   function toggleAll() {
@@ -314,20 +496,20 @@ function AdminBooks() {
 
     if (available.length === 0) return;
 
-    const allAvailableSelected = available.every(
+    const allSelected = available.every(
       (book) => selected[book.google_books_id]
     );
 
-    if (allAvailableSelected) {
+    if (allSelected) {
       setSelected({});
       return;
     }
 
     const next = {};
 
-    for (const book of available) {
+    available.forEach((book) => {
       next[book.google_books_id] = true;
-    }
+    });
 
     setSelected(next);
   }
@@ -335,13 +517,14 @@ function AdminBooks() {
   function toggleCategory(bookId, categoryId) {
     setSelectedCategories((previous) => {
       const current = previous[bookId] || [];
-      const exists = current.includes(categoryId);
+      const id = String(categoryId);
+      const exists = current.map(String).includes(id);
 
       return {
         ...previous,
         [bookId]: exists
-          ? current.filter((id) => id !== categoryId)
-          : [...current, categoryId],
+          ? current.filter((item) => String(item) !== id)
+          : [...current, id],
       };
     });
   }
@@ -377,11 +560,9 @@ function AdminBooks() {
       return;
     }
 
-    const confirmed = window.confirm(
+    if (!window.confirm(
       `ยืนยันนำเข้าหนังสือภาษาไทย ${selectedCount} เล่มหรือไม่?`
-    );
-
-    if (!confirmed) return;
+    )) return;
 
     setImporting(true);
     setError('');
@@ -432,9 +613,6 @@ function AdminBooks() {
     }
   }
 
-  const busy =
-    loading || importing || autoImporting || manualAdding;
-
   return (
     <div className="min-h-screen bg-autumn-cream px-4 py-8 sm:px-6">
       <div className="mx-auto max-w-6xl">
@@ -457,25 +635,273 @@ function AdminBooks() {
           </p>
         </div>
 
+        {/* จำนวนหนังสือ */}
         <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
           <p className="text-sm text-autumn-brown">
             หนังสือที่แสดงในระบบ
           </p>
-
           <p className="mt-1 text-3xl font-bold text-autumn-dark">
-            {visibleCount} เล่ม
+            {visibleBooks.length} เล่ม
           </p>
-
           <p className="mt-1 text-sm text-gray-500">
             สามารถเพิ่มหนังสือได้โดยไม่จำกัดจำนวน
           </p>
         </div>
 
+        {/* รายการหนังสือในระบบ */}
+        <div className="mb-6 rounded-2xl border border-autumn-brown/20 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-autumn-dark">
+                หนังสือในระบบ
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                หนังสือทั้งหมด {books.length} เล่ม
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => loadData().catch((err) =>
+                setError(err.message || 'ไม่สามารถโหลดข้อมูลได้')
+              )}
+              disabled={busy}
+              className="rounded-lg border border-autumn-brown px-4 py-2 text-sm text-autumn-dark hover:bg-autumn-cream disabled:opacity-50"
+            >
+              ↻ โหลดรายการใหม่
+            </button>
+          </div>
+
+          <input
+            type="search"
+            value={bookSearch}
+            onChange={(event) => setBookSearch(event.target.value)}
+            placeholder="ค้นหาจากชื่อหนังสือหรือชื่อผู้แต่ง..."
+            className="mt-4 w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-autumn-brown"
+          />
+
+          {filteredBooks.length === 0 ? (
+            <div className="mt-5 rounded-xl bg-autumn-cream/50 p-6 text-center text-sm text-autumn-brown">
+              {books.length === 0
+                ? 'ยังไม่มีหนังสือในระบบ'
+                : 'ไม่พบหนังสือที่ตรงกับคำค้นหา'}
+            </div>
+          ) : (
+            <div className="mt-5 space-y-3">
+              {filteredBooks.map((book) => (
+                <div
+                  key={book.id}
+                  className="flex flex-col gap-4 rounded-xl border border-gray-200 p-4 sm:flex-row sm:items-center"
+                >
+                  <div className="flex min-w-0 flex-1 gap-4">
+                    {book.cover_url ? (
+                      <img
+                        src={book.cover_url}
+                        alt={book.title}
+                        className="h-28 w-20 shrink-0 rounded-lg object-cover"
+                        onError={(event) => {
+                          event.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <div className="flex h-28 w-20 shrink-0 items-center justify-center rounded-lg bg-autumn-cream text-xs text-gray-500">
+                        ไม่มีปก
+                      </div>
+                    )}
+
+                    <div className="min-w-0">
+                      <h3 className="break-words font-bold text-autumn-dark">
+                        {book.title}
+                      </h3>
+                      <p className="mt-1 text-sm text-autumn-brown">
+                        ผู้แต่ง: {book.author || 'ไม่ระบุ'}
+                      </p>
+                      <p className="mt-1 text-sm text-gray-500">
+                        ปีที่พิมพ์: {book.published_year || 'ไม่ระบุ'}
+                      </p>
+
+                      {book.is_visible === false && (
+                        <span className="mt-2 inline-block rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600">
+                          ไม่แสดงในหน้าร้าน
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleStartEdit(book)}
+                      disabled={busy}
+                      className="rounded-lg bg-amber-100 px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-200 disabled:opacity-50"
+                    >
+                      {editLoading ? 'กำลังโหลด...' : 'แก้ไข'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteBook(book)}
+                      disabled={busy}
+                      className="rounded-lg bg-red-100 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-200 disabled:opacity-50"
+                    >
+                      {String(deletingBookId) === String(book.id)
+                        ? 'กำลังลบ...'
+                        : 'ลบ'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ฟอร์มแก้ไข */}
+        {editingBookId && editBook && (
+          <div className="mb-6 rounded-2xl border-2 border-amber-300 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-lg font-bold text-autumn-dark">
+                แก้ไขข้อมูลหนังสือ
+              </h2>
+              <button
+                type="button"
+                onClick={cancelEdit}
+                disabled={editSaving}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                ยกเลิก
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateBook} className="mt-5 space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-autumn-dark">
+                  ชื่อหนังสือ *
+                </label>
+                <input
+                  type="text"
+                  name="title"
+                  value={editBook.title}
+                  onChange={handleEditChange}
+                  required
+                  disabled={editSaving}
+                  className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-autumn-brown disabled:bg-gray-100"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-autumn-dark">
+                  ชื่อผู้แต่ง *
+                </label>
+                <input
+                  type="text"
+                  name="author"
+                  value={editBook.author}
+                  onChange={handleEditChange}
+                  required
+                  disabled={editSaving}
+                  className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-autumn-brown disabled:bg-gray-100"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-autumn-dark">
+                  คำอธิบายหนังสือ
+                </label>
+                <textarea
+                  name="description"
+                  value={editBook.description}
+                  onChange={handleEditChange}
+                  rows={4}
+                  disabled={editSaving}
+                  className="w-full rounded-xl border border-gray-300 p-3 outline-none focus:border-autumn-brown disabled:bg-gray-100"
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-autumn-dark">
+                    ปีที่พิมพ์
+                  </label>
+                  <input
+                    type="number"
+                    name="published_year"
+                    value={editBook.published_year}
+                    onChange={handleEditChange}
+                    min="1"
+                    max="9999"
+                    disabled={editSaving}
+                    className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-autumn-brown disabled:bg-gray-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-autumn-dark">
+                    URL รูปปกหนังสือ
+                  </label>
+                  <input
+                    type="url"
+                    name="cover_url"
+                    value={editBook.cover_url}
+                    onChange={handleEditChange}
+                    disabled={editSaving}
+                    placeholder="https://example.com/cover.jpg"
+                    className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-autumn-brown disabled:bg-gray-100"
+                  />
+                </div>
+              </div>
+
+              {categories.length > 0 && (
+                <div>
+                  <p className="mb-3 text-sm font-semibold text-autumn-dark">
+                    เลือกหมวดหมู่หนังสือ
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    {categories.map((category) => (
+                      <label
+                        key={category.id}
+                        className="flex items-center gap-2 rounded-lg bg-autumn-cream/60 px-3 py-2 text-sm text-autumn-brown"
+                      >
+                        <input
+                          type="checkbox"
+                          disabled={editSaving}
+                          checked={editBook.category_ids.includes(
+                            String(category.id)
+                          )}
+                          onChange={() => toggleEditCategory(category.id)}
+                        />
+                        {category.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="submit"
+                  disabled={editSaving}
+                  className="rounded-xl bg-autumn-brown px-6 py-3 font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  {editSaving ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  disabled={editSaving}
+                  className="rounded-xl border border-gray-300 px-6 py-3 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  ยกเลิก
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* เพิ่มหนังสือด้วยตนเอง */}
         <div className="mb-6 rounded-2xl border border-autumn-brown/20 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-bold text-autumn-dark">
             เพิ่มหนังสือด้วยตนเอง
           </h2>
-
           <p className="mt-2 text-sm leading-6 text-gray-600">
             กรอกข้อมูลหนังสือที่ต้องการเพิ่มได้โดยตรง
             ไม่จำเป็นต้องค้นหาจาก Google Books
@@ -563,17 +989,11 @@ function AdminBooks() {
               </div>
             </div>
 
-            <p className="text-xs text-gray-500">
-              * ชื่อหนังสือและผู้แต่งเป็นข้อมูลที่จำเป็น
-              ส่วนปีที่พิมพ์และ URL รูปปกสามารถเว้นว่างได้
-            </p>
-
             {categories.length > 0 && (
               <div>
                 <p className="mb-3 text-sm font-semibold text-autumn-dark">
                   เลือกหมวดหมู่หนังสือ
                 </p>
-
                 <div className="flex flex-wrap gap-3">
                   {categories.map((category) => (
                     <label
@@ -583,7 +1003,9 @@ function AdminBooks() {
                       <input
                         type="checkbox"
                         disabled={busy}
-                        checked={manualBook.category_ids.includes(category.id)}
+                        checked={manualBook.category_ids.includes(
+                          String(category.id)
+                        )}
                         onChange={() => toggleManualCategory(category.id)}
                       />
                       {category.name}
@@ -603,14 +1025,14 @@ function AdminBooks() {
           </form>
         </div>
 
+        {/* เพิ่มหนังสืออัตโนมัติ */}
         <div className="mb-6 rounded-2xl border border-autumn-brown/20 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-bold text-autumn-dark">
             เพิ่มหนังสืออัตโนมัติ
           </h2>
-
           <p className="mt-2 text-sm leading-6 text-gray-600">
             ให้ระบบค้นหาหนังสือภาษาไทยจาก Google Books ตามแนวหนังสือที่กำหนด
-            ตรวจสอบข้อมูลและรายการซ้ำ ก่อนบันทึกลงฐานข้อมูล Supabase
+            ตรวจสอบข้อมูลและรายการซ้ำ ก่อนบันทึกลงฐานข้อมูล
           </p>
 
           <button
@@ -636,36 +1058,28 @@ function AdminBooks() {
               <p className="font-semibold text-autumn-dark">
                 ผลการนำเข้าอัตโนมัติ
               </p>
-
               <div className="mt-2 grid gap-2 text-sm sm:grid-cols-3">
                 <p>
-                  เพิ่มสำเร็จ:{' '}
-                  <strong>{autoImportResult.inserted ?? 0}</strong> เล่ม
+                  เพิ่มสำเร็จ: <strong>{autoImportResult.inserted ?? 0}</strong> เล่ม
                 </p>
                 <p>
-                  ข้ามรายการ:{' '}
-                  <strong>{autoImportResult.skipped ?? 0}</strong> เล่ม
+                  ข้ามรายการ: <strong>{autoImportResult.skipped ?? 0}</strong> เล่ม
                 </p>
                 <p>
-                  พบรายการ:{' '}
-                  <strong>{autoImportResult.found ?? 0}</strong> เล่ม
+                  พบรายการ: <strong>{autoImportResult.found ?? 0}</strong> เล่ม
                 </p>
               </div>
-
               {autoImportResult.message && (
                 <p className="mt-2 text-sm text-gray-600">
                   {autoImportResult.message}
                 </p>
               )}
-
               {autoImportResult.skip_reasons && (
                 <div className="mt-3 text-xs text-gray-500">
                   <p className="font-semibold">รายละเอียดรายการที่ข้าม</p>
                   {Object.entries(autoImportResult.skip_reasons).map(
                     ([key, value]) => (
-                      <p key={key}>
-                        {key}: {value}
-                      </p>
+                      <p key={key}>{key}: {value}</p>
                     )
                   )}
                 </div>
@@ -674,6 +1088,7 @@ function AdminBooks() {
           )}
         </div>
 
+        {/* ค้นหา Google Books */}
         <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
           <h2 className="mb-4 text-lg font-bold text-autumn-dark">
             ค้นหาและเลือกหนังสือจาก Google Books
@@ -684,7 +1099,6 @@ function AdminBooks() {
               <label className="mb-2 block text-sm font-semibold text-autumn-dark">
                 ชื่อหนังสือหรือคำค้นหา
               </label>
-
               <input
                 type="text"
                 value={query}
@@ -698,7 +1112,6 @@ function AdminBooks() {
               <label className="mb-2 block text-sm font-semibold text-autumn-dark">
                 แนวหนังสือ
               </label>
-
               <select
                 value={genre}
                 onChange={(event) => setGenre(event.target.value)}
@@ -739,7 +1152,6 @@ function AdminBooks() {
             <h2 className="font-bold text-autumn-dark">
               ผลการนำเข้าด้วยตนเอง
             </h2>
-
             <p className="mt-2 text-green-700">
               เพิ่มสำเร็จ {importResult.success} เล่ม
             </p>
@@ -781,7 +1193,6 @@ function AdminBooks() {
               <p className="text-sm text-autumn-brown">
                 เลือกแล้ว {selectedCount} เล่ม
               </p>
-
               <button
                 type="button"
                 onClick={handleImportSelected}
@@ -830,11 +1241,9 @@ function AdminBooks() {
                           <h2 className="text-xl font-bold text-autumn-dark">
                             {book.title}
                           </h2>
-
                           <p className="mt-1 text-sm text-autumn-brown">
                             ผู้แต่ง: {book.author}
                           </p>
-
                           <p className="mt-1 text-sm text-gray-500">
                             ปีที่พิมพ์: {book.published_year || 'ไม่ระบุ'}
                           </p>
@@ -857,7 +1266,6 @@ function AdminBooks() {
                       <label className="mt-4 block text-sm font-semibold text-autumn-dark">
                         คำอธิบายหนังสือ
                       </label>
-
                       <textarea
                         rows={4}
                         value={descriptions[bookId] ?? ''}
@@ -877,7 +1285,6 @@ function AdminBooks() {
                           <p className="mb-2 text-sm font-semibold text-autumn-dark">
                             เลือกหมวดหมู่
                           </p>
-
                           <div className="flex flex-wrap gap-3">
                             {categories.map((category) => (
                               <label
@@ -889,7 +1296,7 @@ function AdminBooks() {
                                   disabled={busy}
                                   checked={(
                                     selectedCategories[bookId] || []
-                                  ).includes(category.id)}
+                                  ).map(String).includes(String(category.id))}
                                   onChange={() =>
                                     toggleCategory(bookId, category.id)
                                   }

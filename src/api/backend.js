@@ -38,6 +38,10 @@ export async function apiRequest(path, options = {}) {
   return result;
 }
 
+// ========================================
+// BOOKS
+// ========================================
+
 // หนังสือจาก Supabase
 export async function getBooks(options = {}) {
   const params = new URLSearchParams();
@@ -71,10 +75,18 @@ export async function getDiscoverBooks() {
   return [];
 }
 
+// ========================================
+// CATEGORIES
+// ========================================
+
 export async function getCategories() {
   const result = await apiRequest('/api/categories');
   return Array.isArray(result?.data) ? result.data : [];
 }
+
+// ========================================
+// AUTHENTICATION
+// ========================================
 
 export async function login(email, password) {
   return apiRequest('/api/auth/login', {
@@ -113,6 +125,10 @@ export async function getMe() {
   return apiRequest('/api/auth/me');
 }
 
+// ========================================
+// REVIEWS
+// ========================================
+
 export async function getBookReviews(bookId) {
   const result = await apiRequest(`/api/books/${bookId}/reviews`);
   return Array.isArray(result?.reviews) ? result.reviews : [];
@@ -138,13 +154,26 @@ export async function deleteBookReview(reviewId) {
   });
 }
 
-// หนังสือสำหรับหน้า Admin
+// ========================================
+// ADMIN - BOOK MANAGEMENT
+// ========================================
+
+// ดึงรายการหนังสือทั้งหมดสำหรับหน้า Admin
 export async function adminGetBooks() {
   const result = await apiRequest('/api/admin/books');
   return Array.isArray(result?.data) ? result.data : [];
 }
 
-// ค้นหาหนังสือภาษาไทยจาก Google Books เพื่อให้แอดมินเลือกเอง
+// ดึงรายละเอียดหนังสือรายเล่ม
+export async function adminGetBook(bookId) {
+  const result = await apiRequest(
+    `/api/admin/books/${encodeURIComponent(bookId)}`
+  );
+
+  return result?.book || result?.data || result;
+}
+
+// ค้นหาหนังสือจาก Google Books
 export async function searchGoogleBooks(query, options = {}) {
   const params = new URLSearchParams();
   params.set('q', query);
@@ -159,7 +188,7 @@ export async function searchGoogleBooks(query, options = {}) {
   return Array.isArray(result?.data) ? result.data : [];
 }
 
-// เพิ่มหนังสือที่แอดมินเลือกเอง หรือกรอกข้อมูลด้วยตนเอง
+// เพิ่มหนังสือ
 export async function adminCreateBook(book) {
   if (!book?.title?.trim()) {
     throw new Error('กรุณาระบุชื่อหนังสือ');
@@ -184,7 +213,45 @@ export async function adminCreateBook(book) {
   });
 }
 
-// นำเข้าหนังสืออัตโนมัติจาก Google Books แล้วบันทึกลง Supabase
+// แก้ไขหนังสือ
+export async function adminUpdateBook(bookId, book) {
+  if (!book?.title?.trim()) {
+    throw new Error('กรุณาระบุชื่อหนังสือ');
+  }
+
+  if (!book?.author?.trim()) {
+    throw new Error('กรุณาระบุชื่อผู้แต่ง');
+  }
+
+  return apiRequest(
+    `/api/admin/books/${encodeURIComponent(bookId)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({
+        title: book.title.trim(),
+        author: book.author.trim(),
+        description: (book.description || '').trim(),
+        cover_url: book.cover_url?.trim() || null,
+        published_year: book.published_year || null,
+        category_ids: Array.isArray(book.category_ids)
+          ? book.category_ids
+          : [],
+      }),
+    }
+  );
+}
+
+// ลบหนังสือ
+export async function adminDeleteBook(bookId) {
+  return apiRequest(
+    `/api/admin/books/${encodeURIComponent(bookId)}`,
+    {
+      method: 'DELETE',
+    }
+  );
+}
+
+// นำเข้าหนังสืออัตโนมัติจาก Google Books
 export async function adminBulkImportBooks() {
   return apiRequest('/api/admin/books/bulk-import', {
     method: 'POST',
